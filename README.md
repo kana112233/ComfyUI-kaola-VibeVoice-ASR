@@ -36,9 +36,20 @@ You can find the nodes under the `VibeVoice` category.
 
 1.  **VibeVoice Model Loader**
     *   Loads the model.
-    *   **model_name**: Default is `microsoft/VibeVoice-ASR`. It will auto-download from Hugging Face on first use.
+    *   **model_name**: 
+        *   **Auto Download**: Keep default `microsoft/VibeVoice-ASR`. It will download automatically to your HuggingFace cache folder on first run.
+        *   **Manual**: You can download the model from [HuggingFace](https://huggingface.co/microsoft/VibeVoice-ASR), place it in a local folder (e.g., `ComfyUI/models/vibevoice`), and paste the **absolute path** to that folder here.
     *   **precision**: `bf16` (recommended for modern GPUs), `fp16`, or `fp32`.
     *   **device**: `auto` (recommended), `cuda`, `mps` (Mac), `cpu`.
+
+## Model Download regarding
+By default, the node uses `microsoft/VibeVoice-ASR` from HuggingFace.
+If you have internet access, it will download automatically (~7B model) to your `~/.cache/huggingface` directory.
+
+### Manual Download (Offline)
+1. Download the model files from: [microsoft/VibeVoice-ASR](https://huggingface.co/microsoft/VibeVoice-ASR)
+2. Place them in a folder, for example: `ComfyUI/models/vibevoice/VibeVoice-ASR`
+3. In the `VibeVoiceLoader` node, replace `microsoft/VibeVoice-ASR` with the **absolute path** to your folder (e.g., `/content/ComfyUI/models/vibevoice/VibeVoice-ASR` or `D:\ComfyUI\models\vibevoice\VibeVoice-ASR`).
 
 2.  **VibeVoice Transcribe**
     *   Performs the transcription.
