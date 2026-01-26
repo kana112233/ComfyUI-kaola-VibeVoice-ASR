@@ -159,12 +159,15 @@ class VibeVoiceTranscribe:
         elif hasattr(processor, "sampling_rate"):
             target_sr = processor.sampling_rate
         
-        print(f"Target sampling rate: {target_sr}")
+        print(f"DEBUG - Target sampling rate: {target_sr}, Input sampling rate: {sample_rate}")
         
         if sample_rate != target_sr:
+             print(f"DEBUG - Resampling from {sample_rate}Hz to {target_sr}Hz")
              import librosa
              waveform_np = librosa.resample(waveform_np, orig_sr=sample_rate, target_sr=target_sr)
              sample_rate = target_sr
+        else:
+             print("DEBUG - Sample rates match. Skipping resampling.")
 
         print(f"Processing audio: {len(waveform_np)} samples at {sample_rate}Hz")
         
