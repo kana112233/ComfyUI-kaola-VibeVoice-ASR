@@ -76,8 +76,10 @@ class VibeVoiceASRModel(VibeVoiceASRPreTrainedModel):
         self.language_model = AutoModel.from_config(lm_config)
         
         # Initialize speech components if needed
-        self.acoustic_tokenizer = AutoModel.from_config(config.acoustic_tokenizer_config).to(dtype)
-        self.semantic_tokenizer = AutoModel.from_config(config.semantic_tokenizer_config).to(dtype)
+        # Use direct class instantiation instead of AutoModel.from_config to ensure correct class loading
+        from .modular_vibevoice_tokenizer import VibeVoiceAcousticTokenizerModel, VibeVoiceSemanticTokenizerModel
+        self.acoustic_tokenizer = VibeVoiceAcousticTokenizerModel(config.acoustic_tokenizer_config).to(dtype)
+        self.semantic_tokenizer = VibeVoiceSemanticTokenizerModel(config.semantic_tokenizer_config).to(dtype)
 
         self.acoustic_connector = SpeechConnector(config.acoustic_vae_dim, lm_config.hidden_size).to(dtype)
         self.semantic_connector = SpeechConnector(config.semantic_vae_dim, lm_config.hidden_size).to(dtype)
