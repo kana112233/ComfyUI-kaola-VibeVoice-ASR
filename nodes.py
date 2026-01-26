@@ -142,12 +142,15 @@ class VibeVoiceTranscribe:
             
         waveform_np = waveform.squeeze().cpu().numpy()
         
-        # VibeVoice expects 16000Hz usually, let's check processor or default to what the model expects.
-        # The demo uses load_audio_use_ffmpeg which resamples to 16000 or 24000 depending on model?
-        # Actually standard ASR is often 16k. The repo examples show usage of processor without explicit SR arg sometimes,
-        # but processor(audio=..., sampling_rate=...) is standard.
-        # Check processor feature extractor sampling rate
-        target_sr = processor.feature_extractor.sampling_rate
+        # VibeVoice expects 16000Hz usually
+        # Try to get sampling rate from attributes, fallback to 16000
+        target_sr = 16000
+        if hasattr(processor, "feature_extractor") and hasattr(processor.feature_extractor, "sampling_rate"):
+            target_sr = processor.feature_extractor.sampling_rate
+        elif hasattr(processor, "sampling_rate"):
+            target_sr = processor.sampling_rate
+        
+        # print(f"Target sampling rate: {target_sr}")
         
         if sample_rate != target_sr:
              import librosa
@@ -171,8 +174,6 @@ class VibeVoiceTranscribe:
             "temperature": temperature if temperature > 0 else None,
             "top_p": top_p if (temperature > 0) else None,
             "do_sample": temperature > 0,
-            "pad_token_id": processor.pad_id,
-            "eos_token_id": processor.tokenizer.eos_token_id,
         }
         # remove None values
         generation_config = {k: v for k, v in generation_config.items() if v is not None}
