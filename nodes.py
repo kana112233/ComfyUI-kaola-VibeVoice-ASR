@@ -111,6 +111,8 @@ class VibeVoiceTranscribe:
                 "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536}),
                 "temperature": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
+                "num_beams": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             },
             "optional": {
@@ -123,7 +125,7 @@ class VibeVoiceTranscribe:
     FUNCTION = "transcribe"
     CATEGORY = "VibeVoice"
 
-    def transcribe(self, vibevoice_model, audio, max_new_tokens, temperature, top_p, seed, context_info=""):
+    def transcribe(self, vibevoice_model, audio, max_new_tokens, temperature, top_p, repetition_penalty, num_beams, seed, context_info=""):
         if seed is not None:
              torch.manual_seed(seed)
              if torch.cuda.is_available():
@@ -174,11 +176,17 @@ class VibeVoiceTranscribe:
         
         inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k,v in inputs.items()}
         
+        do_sample = temperature > 0
+        
         generation_config = {
             "max_new_tokens": max_new_tokens,
-            "temperature": temperature if temperature > 0 else None,
-            "top_p": top_p if (temperature > 0) else None,
-            "do_sample": temperature > 0,
+            "temperature": temperature if do_sample else None,
+            "top_p": top_p if do_sample else None,
+            "do_sample": do_sample,
+            "num_beams": num_beams,
+            "repetition_penalty": repetition_penalty,
+            "pad_token_id": processor.pad_id,
+            "eos_token_id": processor.tokenizer.eos_token_id,
         }
         # remove None values
         generation_config = {k: v for k, v in generation_config.items() if v is not None}
