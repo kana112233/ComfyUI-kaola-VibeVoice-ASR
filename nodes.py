@@ -111,6 +111,7 @@ class VibeVoiceTranscribe:
                 "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536}),
                 "temperature": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             },
             "optional": {
                  "context_info": ("STRING", {"multiline": True, "default": "", "placeholder": "Enter hotwords or context here..."}),
@@ -122,7 +123,11 @@ class VibeVoiceTranscribe:
     FUNCTION = "transcribe"
     CATEGORY = "VibeVoice"
 
-    def transcribe(self, vibevoice_model, audio, max_new_tokens, temperature, top_p, context_info=""):
+    def transcribe(self, vibevoice_model, audio, max_new_tokens, temperature, top_p, seed, context_info=""):
+        if seed is not None:
+             torch.manual_seed(seed)
+             if torch.cuda.is_available():
+                 torch.cuda.manual_seed_all(seed)
         model = vibevoice_model["model"]
         processor = vibevoice_model["processor"]
         device = vibevoice_model["device"]
