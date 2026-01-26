@@ -3,8 +3,7 @@
 from typing import List, Optional, Union
 
 from transformers.utils import logging
-from transformers.models.qwen2.tokenization_qwen2 import Qwen2Tokenizer
-from transformers.models.qwen2.tokenization_qwen2_fast import Qwen2TokenizerFast
+from transformers import Qwen2Tokenizer, Qwen2TokenizerFast
 
 logger = logging.get_logger(__name__)
 
