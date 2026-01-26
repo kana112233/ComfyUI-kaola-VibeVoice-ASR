@@ -128,39 +128,10 @@
                 4096,
                 0.0,
                 1.0,
-                1.2,
+                1.0,
                 1,
                 0,
                 ""
-            ]
-        },
-        {
-            "id": 4,
-            "type": "VibeVoiceSaveFile",
-            "pos": [
-                950,
-                150
-            ],
-            "size": {
-                "0": 300,
-                "1": 100
-            },
-            "flags": {},
-            "order": 3,
-            "mode": 0,
-            "inputs": [
-                {
-                    "name": "text",
-                    "type": "STRING",
-                    "link": 3
-                }
-            ],
-            "properties": {
-                "Node name for S&R": "VibeVoiceSaveFile"
-            },
-            "widgets_values": [
-                "vibevoice_subtitle",
-                "srt"
             ]
         }
     ],
@@ -180,14 +151,6 @@
             3,
             1,
             "AUDIO"
-        ],
-        [
-            3,
-            3,
-            0,
-            4,
-            0,
-            "STRING"
         ]
     ],
     "groups": [],
