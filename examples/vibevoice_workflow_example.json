@@ -133,6 +133,32 @@
                 0,
                 ""
             ]
+        },
+        {
+            "id": 4,
+            "type": "VibeVoiceShowText",
+            "pos": [
+                950,
+                150
+            ],
+            "size": {
+                "0": 300,
+                "1": 100
+            },
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "text",
+                    "type": "STRING",
+                    "link": 4
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "VibeVoiceShowText"
+            },
+            "widgets_values": []
         }
     ],
     "links": [
@@ -151,6 +177,14 @@
             3,
             1,
             "AUDIO"
+        ],
+        [
+            4,
+            3,
+            2,
+            4,
+            0,
+            "STRING"
         ]
     ],
     "groups": [],
