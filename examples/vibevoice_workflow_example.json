@@ -79,7 +79,7 @@
             ],
             "size": {
                 "0": 400,
-                "1": 200
+                "1": 260
             },
             "flags": {},
             "order": 2,
@@ -112,6 +112,13 @@
                     "links": [],
                     "shape": 3,
                     "slot_index": 1
+                },
+                {
+                    "name": "raw_text",
+                    "type": "STRING",
+                    "links": [],
+                    "shape": 3,
+                    "slot_index": 2
                 }
             ],
             "properties": {
@@ -121,6 +128,9 @@
                 4096,
                 0.0,
                 1.0,
+                1.2,
+                1,
+                0,
                 ""
             ]
         },
