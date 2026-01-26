@@ -198,13 +198,15 @@ class VibeVoiceTranscribe:
         input_length = inputs['input_ids'].shape[1]
         generated_ids = output_ids[0, input_length:]
         generated_text = processor.decode(generated_ids, skip_special_tokens=True)
+        print(f"DEBUG - Generated Text:\n{generated_text}\n-------------------")
         
         # Post-process
         try:
             segments = processor.post_process_transcription(generated_text)
         except Exception as e:
             print(f"Error parsing segments: {e}")
-            segments = []
+            # If parsing fails, try to return raw text in a dummy segment so user can see it
+            segments = [{"start": 0, "end": 0, "text": f"JSON PARSE ERROR. Raw output:\n{generated_text}"}]
             
         # Generate SRT
         srt_output = self.generate_srt(segments)
