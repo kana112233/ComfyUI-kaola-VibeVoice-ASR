@@ -266,6 +266,7 @@ class VibeVoiceShowText:
     OUTPUT_NODE = True
 
     def show_text(self, text):
+        print(f"####################\n[VibeVoiceShowText] Content:\n{text}\n####################")
         return {"ui": {"text": [text]}, "result": (text,)}
 
 NODE_CLASS_MAPPINGS = {
