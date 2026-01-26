@@ -195,7 +195,7 @@ class VibeVoiceASRForConditionalGeneration(VibeVoiceASRPreTrainedModel, Generati
     def get_decoder(self):
         return self.model.language_model
 
-    def tie_weights(self):
+    def tie_weights(self, **kwargs):
         """Tie the weights between the input embeddings and the output embeddings."""
         if getattr(self.config.decoder_config, 'tie_word_embeddings', False):
             output_embeddings = self.get_output_embeddings()
