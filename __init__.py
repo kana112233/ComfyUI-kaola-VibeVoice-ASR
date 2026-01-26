@@ -12,6 +12,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VibeVoiceShowText": "VibeVoice Show String",
 }
 
-WEB_DIRECTORY = "./js"
+WEB_DIRECTORY = "js"
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS', 'WEB_DIRECTORY']
