@@ -120,8 +120,8 @@ class VibeVoiceTranscribe:
             }
         }
 
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("srt_content", "json_content")
+    RETURN_TYPES = ("STRING", "STRING", "STRING")
+    RETURN_NAMES = ("srt_content", "json_content", "raw_text")
     FUNCTION = "transcribe"
     CATEGORY = "VibeVoice"
 
@@ -214,7 +214,7 @@ class VibeVoiceTranscribe:
         import json
         json_output = json.dumps({"raw_text": generated_text, "segments": segments}, indent=2, ensure_ascii=False)
         
-        return (srt_output, json_output)
+        return (srt_output, json_output, generated_text)
 
     def generate_srt(self, segments):
         srt_lines = []
