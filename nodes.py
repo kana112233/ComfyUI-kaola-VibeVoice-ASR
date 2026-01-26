@@ -149,15 +149,17 @@ class VibeVoiceTranscribe:
             
         waveform_np = waveform.squeeze().cpu().numpy()
         
-        # VibeVoice expects 16000Hz usually
+        # VibeVoice usually uses 24000Hz or 16000Hz
         # Try to get sampling rate from attributes, fallback to 16000
         target_sr = 16000
-        if hasattr(processor, "feature_extractor") and hasattr(processor.feature_extractor, "sampling_rate"):
+        if hasattr(processor, "target_sample_rate"):
+             target_sr = processor.target_sample_rate
+        elif hasattr(processor, "feature_extractor") and hasattr(processor.feature_extractor, "sampling_rate"):
             target_sr = processor.feature_extractor.sampling_rate
         elif hasattr(processor, "sampling_rate"):
             target_sr = processor.sampling_rate
         
-        # print(f"Target sampling rate: {target_sr}")
+        print(f"Target sampling rate: {target_sr}")
         
         if sample_rate != target_sr:
              import librosa
