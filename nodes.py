@@ -192,12 +192,45 @@ class VibeVoiceTranscribe:
             
         return "\n".join(srt_lines)
 
+class VibeVoiceSaveFile:
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "text": ("STRING", {"forceInput": True}),
+                "filename_prefix": ("STRING", {"default": "vibevoice_output"}),
+                "format": (["srt", "json", "txt"], {"default": "srt"}),
+            }
+        }
+
+    RETURN_TYPES = ()
+    FUNCTION = "save_file"
+    OUTPUT_NODE = True
+    CATEGORY = "VibeVoice"
+
+    def save_file(self, text, filename_prefix, format):
+        import time
+        timestamp = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"{filename_prefix}_{timestamp}.{format}"
+        file_path = os.path.join(self.output_dir, filename)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(text)
+            
+        print(f"Saved to {file_path}")
+        return {"ui": {"text": [file_path]}}
+
 NODE_CLASS_MAPPINGS = {
     "VibeVoiceLoader": VibeVoiceLoader,
-    "VibeVoiceTranscribe": VibeVoiceTranscribe
+    "VibeVoiceTranscribe": VibeVoiceTranscribe,
+    "VibeVoiceSaveFile": VibeVoiceSaveFile
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "VibeVoiceLoader": "VibeVoice Model Loader",
-    "VibeVoiceTranscribe": "VibeVoice Transcribe"
+    "VibeVoiceTranscribe": "VibeVoice Transcribe",
+    "VibeVoiceSaveFile": "VibeVoice Save File"
 }

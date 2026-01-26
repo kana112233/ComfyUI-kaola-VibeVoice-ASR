@@ -16,7 +16,7 @@ This node allows you to perform high-quality, long-form speech recognition, spea
 1.  **Clone the repository** into your ComfyUI `custom_nodes` directory:
     ```bash
     cd ComfyUI/custom_nodes/
-    git clone https://github.com/your-username/ComfyUI-kaola-VibeVoice-ASR.git
+    git clone https://github.com/kana112233/ComfyUI-kaola-VibeVoice-ASR.git
     cd ComfyUI-kaola-VibeVoice-ASR
     ```
 
@@ -49,7 +49,7 @@ You can find the nodes under the `VibeVoice` category.
         *   `json_content`: Detailed JSON data.
 
 ### Example Workflow
-An example workflow is included: `vibevoice_workflow_example.json`. Drag and drop it into ComfyUI to get started.
+An example workflow is included in `examples/vibevoice_workflow_example.json`. Drag and drop it into ComfyUI to get started.
 
 ## Updating
 
