@@ -111,7 +111,7 @@ class VibeVoiceTranscribe:
                 "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536}),
                 "temperature": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
                 "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
+                "repetition_penalty": ("FLOAT", {"default": 1.2, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "num_beams": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             },
@@ -190,6 +190,14 @@ class VibeVoiceTranscribe:
         }
         # remove None values
         generation_config = {k: v for k, v in generation_config.items() if v is not None}
+
+        # Debug inputs
+        print(f"DEBUG - Inputs keys: {list(inputs.keys())}")
+        if "speech_tensors" in inputs:
+            print(f"DEBUG - Speech tensors shape: {inputs['speech_tensors'].shape}")
+        if "acoustic_input_mask" in inputs:
+             print(f"DEBUG - Acoustic mask sum: {inputs['acoustic_input_mask'].sum()}")
+        print(f"DEBUG - Generation config: pad_token_id={generation_config.get('pad_token_id')}, eos_token_id={generation_config.get('eos_token_id')}")
 
         with torch.no_grad():
             output_ids = model.generate(**inputs, **generation_config)
