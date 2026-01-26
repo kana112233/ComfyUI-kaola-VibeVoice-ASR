@@ -33,7 +33,29 @@ class VibeVoiceLoader:
 
     def load_model(self, model_name, precision, device):
         print(f"Loading VibeVoice ASR model: {model_name}")
+
+        # Path resolution logic
+        model_path = model_name
+        if not os.path.exists(model_path):
+            # Try looking in ComfyUI/models
+            comfy_models_dir = folder_paths.models_dir
+            potential_path = os.path.join(comfy_models_dir, model_name)
+            if os.path.exists(potential_path):
+                model_path = potential_path
+            else:
+                 # Try looking in ComfyUI/models/vibevoice
+                 potential_path = os.path.join(comfy_models_dir, "vibevoice", model_name)
+                 if os.path.exists(potential_path):
+                     model_path = potential_path
         
+        # If it's a local path, use absolute path to avoid ambiguity
+        if os.path.exists(model_path):
+            model_path = os.path.abspath(model_path)
+            print(f"Resolved model path to: {model_path}")
+        else:
+            print(f"Model path not found locally, assuming HuggingFace repo ID: {model_name}")
+            model_path = model_name
+
         dtype = torch.float32
         if precision == "bf16":
             dtype = torch.bfloat16
@@ -54,12 +76,12 @@ class VibeVoiceLoader:
                  print(f"Warning: forcing float32 for {device} device stability")
                  dtype = torch.float32
 
-        processor = VibeVoiceASRProcessor.from_pretrained(model_name)
+        processor = VibeVoiceASRProcessor.from_pretrained(model_path)
         
         # Load model using from_pretrained
         # We need trust_remote_code=True as per original repo usage
         model = VibeVoiceASRForConditionalGeneration.from_pretrained(
-            model_name,
+            model_path,
             dtype=dtype,
             device_map=device if device != "cpu" else None, # accelerate handles device_map
             trust_remote_code=True
