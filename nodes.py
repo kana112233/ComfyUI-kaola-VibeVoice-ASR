@@ -39,14 +39,21 @@ class VibeVoiceLoader:
         if not os.path.exists(model_path):
             # Try looking in ComfyUI/models
             comfy_models_dir = folder_paths.models_dir
-            potential_path = os.path.join(comfy_models_dir, model_name)
-            if os.path.exists(potential_path):
-                model_path = potential_path
-            else:
-                 # Try looking in ComfyUI/models/vibevoice
-                 potential_path = os.path.join(comfy_models_dir, "vibevoice", model_name)
-                 if os.path.exists(potential_path):
-                     model_path = potential_path
+            search_paths = [
+                os.path.join(comfy_models_dir, model_name),
+                os.path.join(comfy_models_dir, "vibevoice", model_name),
+            ]
+            
+            # If model_name has a slash (e.g. microsoft/VibeVoice-ASR), try checking just the name (VibeVoice-ASR)
+            if "/" in model_name:
+                model_basename = model_name.split("/")[-1]
+                search_paths.append(os.path.join(comfy_models_dir, model_basename))
+                search_paths.append(os.path.join(comfy_models_dir, "vibevoice", model_basename))
+            
+            for potential_path in search_paths:
+                if os.path.exists(potential_path):
+                    model_path = potential_path
+                    break
         
         # If it's a local path, use absolute path to avoid ambiguity
         if os.path.exists(model_path):
