@@ -3,6 +3,9 @@ import { ComfyWidgets } from "../../scripts/widgets.js";
 
 app.registerExtension({
     name: "VibeVoice.ShowString",
+    async setup() {
+        console.log("%c VibeVoice ShowString Extension Loaded", "color: green; font-weight: bold;");
+    },
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
         if (nodeData.name === "VibeVoiceShowText") {
 
