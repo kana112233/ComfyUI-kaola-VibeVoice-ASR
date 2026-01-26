@@ -251,7 +251,9 @@ class VibeVoiceSaveFile:
             f.write(text)
             
         print(f"Saved to {file_path}")
-        return {"ui": {"text": [file_path]}}
+        # Return filename and content to UI so user can see/copy it
+        display_text = f"Saved to file: {filename}\n\n{text}"
+        return {"ui": {"text": [display_text]}}
 
 NODE_CLASS_MAPPINGS = {
     "VibeVoiceLoader": VibeVoiceLoader,
