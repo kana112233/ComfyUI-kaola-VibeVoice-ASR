@@ -5,6 +5,15 @@ VibeVoice ASR Gradio Demo
 
 import os
 import sys
+import os
+
+# Add project root to sys.path to allow importing vibevoice
+current_file = os.path.abspath(__file__)
+demo_dir = os.path.dirname(current_file) # VibeVoice_src/demo
+project_root = os.path.dirname(demo_dir) # VibeVoice_src
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import torch
 import numpy as np
 import soundfile as sf
