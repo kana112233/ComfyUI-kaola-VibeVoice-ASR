@@ -334,13 +334,9 @@ class VibeVoiceASRProcessor:
         if use_streaming and audio_duration < 60.0:
             use_streaming = False
         
-        # Calculate token length based on streaming mode
-        # Non-streaming: uses ceil (encoder adds extra_padding for stride alignment)
-        # Streaming: uses floor (segments processed independently, no global alignment)
-        # if use_streaming:
-        #     vae_tok_len = len(audio_array) // self.speech_tok_compress_ratio
-        # else:
-        vae_tok_len = math.ceil(len(audio_array) / self.speech_tok_compress_ratio)
+        # Calculate token length - use floor to match encoder output
+        # The encoder produces floor(samples / compress_ratio) features
+        vae_tok_len = len(audio_array) // self.speech_tok_compress_ratio
         
         # Build token sequence following training format
         # 1. System prompt - use apply_chat_template then encode like in training
