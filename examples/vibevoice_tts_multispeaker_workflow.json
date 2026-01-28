@@ -1,0 +1,206 @@
+{
+    "last_node_id": 6,
+    "last_link_id": 5,
+    "nodes": [
+        {
+            "id": 1,
+            "type": "VibeVoiceTTSLoader",
+            "pos": [100, 100],
+            "size": [350, 110],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "vibevoice_tts_model",
+                    "type": "VIBEVOICE_TTS_MODEL",
+                    "links": [1],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "VibeVoiceTTSLoader"
+            },
+            "widgets_values": [
+                "microsoft/VibeVoice-1.5B",
+                "bf16",
+                "auto"
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+        },
+        {
+            "id": 2,
+            "type": "VibeVoiceTTSInferenceMultiSpeaker",
+            "pos": [500, 100],
+            "size": [450, 340],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "vibevoice_tts_model",
+                    "type": "VIBEVOICE_TTS_MODEL",
+                    "link": 1
+                },
+                {
+                    "name": "speaker_0_audio",
+                    "type": "AUDIO",
+                    "link": 2,
+                    "shape": 7
+                },
+                {
+                    "name": "speaker_1_audio",
+                    "type": "AUDIO",
+                    "link": 3,
+                    "shape": 7
+                },
+                {
+                    "name": "speaker_2_audio",
+                    "type": "AUDIO",
+                    "link": null,
+                    "shape": 7
+                },
+                {
+                    "name": "speaker_3_audio",
+                    "type": "AUDIO",
+                    "link": null,
+                    "shape": 7
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "audio",
+                    "type": "AUDIO",
+                    "links": [4],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "VibeVoiceTTSInferenceMultiSpeaker"
+            },
+            "widgets_values": [
+                "Speaker 0: Welcome to our podcast! Today we'll discuss AI technology. Speaker 1: Thanks for having me! I'm excited to share my thoughts on this fascinating topic.",
+                4096,
+                0.7,
+                1.5,
+                0
+            ],
+            "color": "#233",
+            "bgcolor": "#355"
+        },
+        {
+            "id": 3,
+            "type": "LoadAudio",
+            "pos": [100, 270],
+            "size": [320, 140],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "AUDIO",
+                    "type": "AUDIO",
+                    "links": [2],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "LoadAudio"
+            },
+            "widgets_values": [
+                "speaker0_reference.wav",
+                null,
+                null
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+        },
+        {
+            "id": 4,
+            "type": "LoadAudio",
+            "pos": [100, 450],
+            "size": [320, 140],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "AUDIO",
+                    "type": "AUDIO",
+                    "links": [3],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "LoadAudio"
+            },
+            "widgets_values": [
+                "speaker1_reference.wav",
+                null,
+                null
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+        },
+        {
+            "id": 5,
+            "type": "SaveAudio",
+            "pos": [1000, 100],
+            "size": [320, 100],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "audio",
+                    "type": "AUDIO",
+                    "link": 4
+                }
+            ],
+            "outputs": [],
+            "properties": {
+                "Node name for S&R": "SaveAudio"
+            },
+            "widgets_values": [
+                "vibevoice_multispeaker_output"
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+        },
+        {
+            "id": 6,
+            "type": "Note",
+            "pos": [100, 630],
+            "size": [1220, 280],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "properties": {
+                "text": ""
+            },
+            "widgets_values": [
+                "VibeVoice Multi-Speaker TTS Workflow - 多说话人工作流使用说明:\n\n核心功能 - 为不同说话人指定不同的参考音频实现音色控制:\n\n1. Model Loader 模型加载:\n   - 与单说话人模式相同，加载 TTS 模型\n\n2. LoadAudio 节点（可选，但推荐）:\n   - speaker_0_audio: 连接 LoadAudio 加载 Speaker 0 的参考音频（控制 Speaker 0 的音色）\n   - speaker_1_audio: 连接 LoadAudio 加载 Speaker 1 的参考音频（控制 Speaker 1 的音色）\n   - speaker_2_audio: 可选，控制 Speaker 2 的音色\n   - speaker_3_audio: 可选，控制 Speaker 3 的音色\n   - 支持最多 4 个不同说话人的音色控制\n   - 如果不连接参考音频，将使用模型默认音色\n\n3. TTS Inference (Multi-Speaker) 多说话人推理:\n   - text: 必须使用标准格式 \"Speaker 0: 文本内容 Speaker 1: 另一段文本\"\n   - 参考音频映射规则:\n     * speaker_0_audio 的音色 → 用于生成 \"Speaker 0:\" 后面的文本\n     * speaker_1_audio 的音色 → 用于生成 \"Speaker 1:\" 后面的文本\n     * 以此类推\n   - 其他参数与单说话人模式相同\n\n4. 使用技巧:\n   - 参考音频建议 3-10 秒，清晰且噪音少\n   - 可以只为部分说话人提供参考音频（其他使用默认音色）\n   - 参考音频的语言不必与生成文本相同\n   - 音色会根据参考音频的特征（音高、语速、音色等）进行克隆\n\n5. 示例场景:\n   - 播客对话：两个主持人不同的声音\n   - 有声书：不同角色不同的声音\n   - 多语言内容：保持音色但切换语言"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+        }
+    ],
+    "links": [
+        [1, 1, 0, 2, 0, "VIBEVOICE_TTS_MODEL"],
+        [2, 3, 0, 2, 1, "AUDIO"],
+        [3, 4, 0, 2, 2, "AUDIO"],
+        [4, 2, 0, 5, 0, "AUDIO"]
+    ],
+    "groups": [],
+    "config": {},
+    "extra": {},
+    "version": 0.4
+}

@@ -10,6 +10,8 @@ This node allows you to perform high-quality, long-form speech recognition, spea
 *   **Speaker Diarization**: Identifies different speakers (Speaker 0, Speaker 1, etc.).
 *   **Context/Hotwords**: Improve accuracy for specific terms or names by providing context.
 *   **Rich Output**: Provides both SRT strings and raw JSON data for advanced processing.
+*   **Multi-Speaker TTS**: Generate speech with different voice characteristics for each speaker using reference audios.
+*   **Voice Cloning**: Clone voice characteristics from reference audio samples.
 
 
 ## Model Download / 模型下载
@@ -85,8 +87,32 @@ If you have internet access, it will download automatically (~7B model) to your 
         *   `srt_content`: Subtitle text.
         *   `json_content`: Detailed JSON data.
 
-### Example Workflow
-An example workflow is included in `examples/vibevoice_workflow_example.json`. Drag and drop it into ComfyUI to get started.
+3.  **VibeVoice TTS Model Loader**
+    *   Loads the TTS model (e.g., `microsoft/VibeVoice-1.5B`).
+    *   Same parameters as ASR loader.
+
+4.  **VibeVoice TTS Inference**
+    *   Basic TTS with single reference audio (optional).
+    *   **text**: Input text in format `"Speaker 0: Hello. Speaker 1: Hi."`
+    *   **reference_audio**: (Optional) Single reference audio for voice cloning.
+
+5.  **VibeVoice TTS Inference (Multi-Speaker)** ⭐ NEW
+    *   Advanced TTS with separate reference audio for each speaker.
+    *   **text**: Input text in format `"Speaker 0: Hello. Speaker 1: Hi."`
+    *   **speaker_0_audio**: (Optional) Reference audio for Speaker 0's voice.
+    *   **speaker_1_audio**: (Optional) Reference audio for Speaker 1's voice.
+    *   **speaker_2_audio**: (Optional) Reference audio for Speaker 2's voice.
+    *   **speaker_3_audio**: (Optional) Reference audio for Speaker 3's voice.
+    *   Each speaker will use the voice characteristics from their corresponding reference audio.
+    *   If no reference audio is provided for a speaker, the model's default voice is used.
+
+### Example Workflows
+- **ASR**: `examples/vibevoice_workflow_example.json` - Speech recognition with transcription
+- **TTS Basic**: `examples/vibevoice_tts_workflow.json` - Basic text-to-speech
+- **TTS Multi-Speaker**: `examples/vibevoice_tts_multispeaker_workflow.json` - Multi-speaker TTS with voice control
+- **Streaming**: `examples/vibevoice_streaming_workflow.json` - Real-time streaming inference
+
+Drag and drop any workflow into ComfyUI to get started.
 
 ## Updating
 

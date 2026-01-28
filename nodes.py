@@ -574,6 +574,114 @@ class VibeVoiceTTSInference:
             return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": 24000},)
 
 
+class VibeVoiceTTSInferenceMultiSpeaker:
+    """TTS Inference node with support for multiple speaker reference audios"""
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "vibevoice_tts_model": ("VIBEVOICE_TTS_MODEL",),
+                "text": ("STRING", {"multiline": True, "default": "Speaker 0: Hello. Speaker 1: Hi there."}),
+                "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536}),
+                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1}),
+                "cfg_scale": ("FLOAT", {"default": 1.5, "min": 0.1, "max": 10.0, "step": 0.1}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            },
+            "optional": {
+                "speaker_0_audio": ("AUDIO",), # Reference audio for Speaker 0
+                "speaker_1_audio": ("AUDIO",), # Reference audio for Speaker 1
+                "speaker_2_audio": ("AUDIO",), # Reference audio for Speaker 2
+                "speaker_3_audio": ("AUDIO",), # Reference audio for Speaker 3
+            }
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    FUNCTION = "generate"
+    CATEGORY = "VibeVoice"
+
+    def generate(self, vibevoice_tts_model, text, max_new_tokens, temperature, cfg_scale, seed,
+                 speaker_0_audio=None, speaker_1_audio=None, speaker_2_audio=None, speaker_3_audio=None):
+        if seed is not None:
+             torch.manual_seed(seed)
+             if torch.cuda.is_available():
+                 torch.cuda.manual_seed_all(seed)
+
+        model = vibevoice_tts_model["model"]
+        processor = vibevoice_tts_model["processor"]
+        device = vibevoice_tts_model["device"]
+        dtype = vibevoice_tts_model["dtype"]
+
+        # Handle multiple reference audios
+        voice_samples = []
+        speaker_audios = [speaker_0_audio, speaker_1_audio, speaker_2_audio, speaker_3_audio]
+
+        for idx, ref_audio in enumerate(speaker_audios):
+            if ref_audio is not None:
+                waveform = ref_audio["waveform"]
+                # mix to mono
+                if waveform.dim() == 3:
+                    waveform = waveform[0]
+                if waveform.shape[0] > 1:
+                    waveform = torch.mean(waveform, dim=0, keepdim=True)
+                waveform_np = waveform.squeeze().cpu().numpy()
+
+                # Resample if needed
+                target_sr = 24000
+                if hasattr(processor, "audio_processor") and hasattr(processor.audio_processor, "sampling_rate"):
+                    target_sr = processor.audio_processor.sampling_rate
+
+                input_sr = ref_audio["sample_rate"]
+                if input_sr != target_sr:
+                    waveform_np = librosa.resample(waveform_np, orig_sr=input_sr, target_sr=target_sr)
+
+                voice_samples.append(waveform_np)
+                print(f"Added reference audio for Speaker {idx}: {len(waveform_np)} samples at {target_sr}Hz")
+
+        # Auto-format text if needed
+        import re
+        if not re.match(r"Speaker\s+\d+\s*:", text, re.IGNORECASE):
+             print(f"Auto-formatting text to 'Speaker 0: {text[:20]}...'")
+             text = f"Speaker 0: {text}"
+
+        print(f"Generating TTS with {len(voice_samples)} reference audio(s)")
+
+        # Prepare inputs
+        inputs = processor(
+            text=text,
+            voice_samples=voice_samples if voice_samples else None,
+            return_tensors="pt",
+        )
+
+        inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k,v in inputs.items()}
+
+        # Generation config
+        generation_config = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "do_sample": temperature > 0,
+            "cfg_scale": cfg_scale,
+        }
+
+        print(f"Generating TTS audio for: {text[:80]}...")
+
+        with torch.no_grad():
+             outputs = model.generate(
+                 **inputs,
+                 **generation_config,
+                 tokenizer=processor.tokenizer,
+             )
+
+        # Extract audio
+        if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0 and outputs.speech_outputs[0] is not None:
+            generated_audio = outputs.speech_outputs[0].cpu().float()
+            output_audio = generated_audio.unsqueeze(0).unsqueeze(0)
+            return ({"waveform": output_audio, "sample_rate": 24000},)
+        else:
+            print("No audio generated.")
+            return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": 24000},)
+
+
 class VibeVoiceStreamingLoader:
     @classmethod
     def INPUT_TYPES(s):
@@ -846,6 +954,7 @@ NODE_CLASS_MAPPINGS = {
     "VibeVoiceShowText": VibeVoiceShowText,
     "VibeVoiceTTSLoader": VibeVoiceTTSLoader,
     "VibeVoiceTTSInference": VibeVoiceTTSInference,
+    "VibeVoiceTTSInferenceMultiSpeaker": VibeVoiceTTSInferenceMultiSpeaker,
     "VibeVoiceStreamingLoader": VibeVoiceStreamingLoader,
     "VibeVoiceStreamingInference": VibeVoiceStreamingInference,
 }
@@ -856,6 +965,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VibeVoiceShowText": "VibeVoice Show String",
     "VibeVoiceTTSLoader": "VibeVoice TTS Model Loader",
     "VibeVoiceTTSInference": "VibeVoice TTS Inference",
+    "VibeVoiceTTSInferenceMultiSpeaker": "VibeVoice TTS Inference (Multi-Speaker)",
     "VibeVoiceStreamingLoader": "VibeVoice Streaming Model Loader",
     "VibeVoiceStreamingInference": "VibeVoice Streaming Inference",
 }

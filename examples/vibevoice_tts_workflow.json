@@ -112,7 +112,7 @@
                 "text": ""
             },
             "widgets_values": [
-                "VibeVoice TTS Workflow - 使用说明 / Usage Guide:\n\n1. Model Loader 模型加载:\n   - model_name: 模型路径或HuggingFace ID（默认自动下载）\n   - precision: bf16(推荐CUDA) / fp16(推荐MPS/兼容性) / fp32(CPU)\n   - device: auto(自动检测) / cuda / mps / cpu\n\n2. TTS Inference 文本转语音:\n   - text: 使用 'Speaker 0: 文本' 格式，支持多说话人 'Speaker 1: ...'\n   - max_new_tokens: 最大生成token数（4096推荐）\n   - temperature: 生成随机性 (0=确定性, 0.7=平衡, 1.0=创造性)\n   - cfg_scale: 引导强度 (1.5推荐, 更高=更贴近文本)\n   - seed: 随机种子（0=随机，固定值=可复现结果）\n   - speaker_indices: 说话人索引映射 (默认\"0\")\n   - reference_audio (可选): 连接LoadAudio节点实现声音克隆\n\n3. Save Audio 保存音频:\n   - 自动保存到 ComfyUI/output/ 目录\n   - 格式: vibevoice_tts_output_[数字].wav"
+                "VibeVoice TTS Workflow - 使用说明 / Usage Guide:\n\n1. Model Loader 模型加载:\n   - model_name: 模型路径或HuggingFace ID（默认自动下载）\n   - precision: bf16(推荐CUDA) / fp16(推荐MPS/兼容性) / fp32(CPU)\n   - device: auto(自动检测) / cuda / mps / cpu\n\n2. TTS Inference 文本转语音:\n   - text: 使用 'Speaker 0: 文本' 格式，支持多说话人 'Speaker 1: ...'\n   - max_new_tokens: 最大生成token数（4096推荐）\n   - temperature: 生成随机性 (0=确定性, 0.7=平衡, 1.0=创造性)\n   - cfg_scale: 引导强度 (1.5推荐, 更高=更贴近文本)\n   - seed: 随机种子（0=随机，固定值=可复现结果）\n   - reference_audio (可选): 连接LoadAudio节点实现声音克隆\n     * 注意：此节点只支持单个参考音频，所有说话人将使用相同音色\n\n⭐ 需要为不同说话人设置不同音色？\n   使用 'VibeVoice TTS Inference (Multi-Speaker)' 节点！\n   参考示例：vibevoice_tts_multispeaker_workflow.json\n\n3. Save Audio 保存音频:\n   - 自动保存到 ComfyUI/output/ 目录\n   - 格式: vibevoice_tts_output_[数字].wav"
             ],
             "color": "#432",
             "bgcolor": "#653"
