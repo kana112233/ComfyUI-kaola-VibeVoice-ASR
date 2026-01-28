@@ -14,25 +14,28 @@ This node allows you to perform high-quality, long-form speech recognition, spea
 
 ## Model Download / 模型下载
 
-Please download the **VibeVoice-Realtime-0.5B** model (do NOT use the 1.5B version).
-请下载 **VibeVoice-Realtime-0.5B** 模型 (不要使用 1.5B 版本)。
+### Supported Models / 支持的模型:
+
+| Model | Type | Download |
+|-------|------|----------|
+| **VibeVoice-Realtime-0.5B** | Streaming TTS | [HuggingFace](https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B) |
+| **VibeVoice-1.5B** | High-Quality TTS | Contact Microsoft |
+
+**1.5B Model Structure / 1.5B 模型结构:**
+```
+VibeVoice-1.5B/
+    checkpoints/           # Model weights
+        config.json
+        model-00001-of-00003.safetensors
+        ...
+    Figures/tmp/           # Tokenizer files (required)
+        tokenizer.json
+        vocab.json
+        ...
+```
 
 **Recommended Path / 推荐路径:**
-`ComfyUI/models/vibevoice/VibeVoice-Realtime-0.5B`
-
-**Download Link / 下载链接:**
-[https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B](https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B)
-
-Ensure the folder structure looks like this / 确保文件夹结构如下:
-```
-ComfyUI/
-    models/
-        vibevoice/
-            VibeVoice-Realtime-0.5B/
-                config.json
-                model.safetensors
-                ...
-```
+`ComfyUI/models/vibevoice/`
 
 ## Installation
 

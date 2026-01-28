@@ -56,53 +56,88 @@ class VibeVoiceProcessor:
         """
         import os
         import json
-        from transformers.utils import cached_file
         from .vibevoice_tokenizer_processor import VibeVoiceTokenizerProcessor
         from vibevoice.modular.modular_vibevoice_text_tokenizer import (
             VibeVoiceTextTokenizer, 
             VibeVoiceTextTokenizerFast
         )
         
-        # Try to load from local path first, then from HF hub
+        # Load processor configuration
         config_path = os.path.join(pretrained_model_name_or_path, "preprocessor_config.json")
-        config = None
-        
         if os.path.exists(config_path):
-            # Local path exists
             with open(config_path, 'r') as f:
                 config = json.load(f)
         else:
-            # Try to load from HF hub
-            try:
-                config_file = cached_file(
-                    pretrained_model_name_or_path,
-                    "preprocessor_config.json",
-                    **kwargs
-                )
-                with open(config_file, 'r') as f:
-                    config = json.load(f)
-            except Exception as e:
-                logger.warning(f"Could not load preprocessor_config.json from {pretrained_model_name_or_path}: {e}")
-                logger.warning("Using default configuration")
-                config = {
-                    "speech_tok_compress_ratio": 3200,
-                    "db_normalize": True,
-                }
+            logger.warning(f"No preprocessor_config.json found at {pretrained_model_name_or_path}, using defaults")
+            config = {
+                "speech_tok_compress_ratio": 3200,
+                "db_normalize": True,
+            }
         
         # Extract main processor parameters
         speech_tok_compress_ratio = config.get("speech_tok_compress_ratio", 3200)
         db_normalize = config.get("db_normalize", True)
         
-        # Load tokenizer - try from model path first, then fallback to Qwen        
-        language_model_pretrained_name = config.get("language_model_pretrained_name", None) or kwargs.pop("language_model_pretrained_name", "Qwen/Qwen2.5-1.5B")
-        logger.info(f"Loading tokenizer from {language_model_pretrained_name}")
-        if 'qwen' in language_model_pretrained_name.lower():
-            tokenizer = VibeVoiceTextTokenizerFast.from_pretrained(
-                language_model_pretrained_name,
-                **kwargs
-            )
-        else:
-            raise ValueError(f"Unsupported tokenizer type for {language_model_pretrained_name}. Supported types: Qwen, Llama, Gemma.")
+        # Load tokenizer - try multiple paths in order:
+        # 1. Model path directly (if tokenizer files exist there)
+        # 2. Model path + "/Figures/tmp" (VibeVoice-1.5B layout)
+        # 3. Parent directory + "/Figures/tmp" (if model path is checkpoints subdirectory)
+        # 4. Bundled tokenizer in this package
+        # 5. Fallback to Qwen2.5-VL-3B from HuggingFace (has vision tokens)
+        import os
+        tokenizer = None
+        
+        # Build list of paths to try
+        tokenizer_paths = [pretrained_model_name_or_path]
+        
+        # Add tokenizer subdirectory if exists (preferred)
+        tokenizer_dir = os.path.join(pretrained_model_name_or_path, "tokenizer")
+        if os.path.isdir(tokenizer_dir):
+            tokenizer_paths.append(tokenizer_dir)
+        
+        # Add Figures/tmp subdirectory if exists (legacy)
+        figures_tmp = os.path.join(pretrained_model_name_or_path, "Figures", "tmp")
+        if os.path.isdir(figures_tmp):
+            tokenizer_paths.append(figures_tmp)
+        
+        # If model path ends with "checkpoints", try parent's tokenizer and Figures/tmp
+        if pretrained_model_name_or_path.endswith("checkpoints"):
+            parent_dir = os.path.dirname(pretrained_model_name_or_path)
+            parent_tokenizer = os.path.join(parent_dir, "tokenizer")
+            if os.path.isdir(parent_tokenizer):
+                tokenizer_paths.append(parent_tokenizer)
+            parent_figures_tmp = os.path.join(parent_dir, "Figures", "tmp")
+            if os.path.isdir(parent_figures_tmp):
+                tokenizer_paths.append(parent_figures_tmp)
+        
+        # Bundled tokenizer in this package (VibeVoice_src/tokenizer)
+        bundled_tokenizer = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "tokenizer")
+        if os.path.isdir(bundled_tokenizer):
+            tokenizer_paths.append(bundled_tokenizer)
+        
+        # Fallback to HuggingFace models with vision tokens
+        tokenizer_paths.append("Qwen/Qwen2.5-VL-3B")
+        
+        for tokenizer_path in tokenizer_paths:
+            try:
+                logger.info(f"Trying to load tokenizer from: {tokenizer_path}")
+                tokenizer = VibeVoiceTextTokenizerFast.from_pretrained(
+                    tokenizer_path,
+                    **kwargs
+                )
+                # Verify tokenizer has speech tokens
+                if hasattr(tokenizer, 'speech_start_id') and tokenizer.speech_start_id > 100:
+                    logger.info(f"Successfully loaded tokenizer with speech tokens from: {tokenizer_path}")
+                    break
+                else:
+                    logger.warning(f"Tokenizer from {tokenizer_path} missing proper speech tokens, trying next...")
+                    tokenizer = None
+            except Exception as e:
+                logger.warning(f"Failed to load tokenizer from {tokenizer_path}: {e}")
+                continue
+        
+        if tokenizer is None:
+            raise ValueError(f"Could not load tokenizer with valid speech tokens from any path: {tokenizer_paths}")
         
         # Load audio processor
         if "audio_processor" in config:

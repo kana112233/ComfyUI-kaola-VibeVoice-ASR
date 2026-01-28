@@ -16,6 +16,7 @@ from vibevoice.modular.modeling_vibevoice_asr import VibeVoiceASRForConditionalG
 from vibevoice.processor.vibevoice_asr_processor import VibeVoiceASRProcessor
 from vibevoice.modular.modeling_vibevoice import VibeVoiceForConditionalGeneration
 from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
+from vibevoice.modular.modeling_vibevoice_inference import VibeVoiceForConditionalGenerationInference
 from vibevoice.modular.modeling_vibevoice_streaming_inference import VibeVoiceStreamingForConditionalGenerationInference
 from vibevoice.processor.vibevoice_streaming_processor import VibeVoiceStreamingProcessor
 import glob
@@ -350,9 +351,28 @@ class VibeVoiceShowText:
 class VibeVoiceTTSLoader:
     @classmethod
     def INPUT_TYPES(s):
+        # Discover available models in vibevoice directory
+        available_models = ["microsoft/VibeVoice-1.5B"]  # Default HuggingFace option
+        
+        # Search for local models
+        try:
+            vibevoice_dir = os.path.join(folder_paths.models_dir, "vibevoice")
+            if os.path.isdir(vibevoice_dir):
+                for item in os.listdir(vibevoice_dir):
+                    item_path = os.path.join(vibevoice_dir, item)
+                    # Check for checkpoints subdirectory (VibeVoice-1.5B structure)
+                    checkpoints_path = os.path.join(item_path, "checkpoints")
+                    if os.path.isdir(checkpoints_path) and os.path.exists(os.path.join(checkpoints_path, "config.json")):
+                        available_models.append(f"{item}/checkpoints")
+                    # Check for direct model directory (VibeVoice-0.5B structure)
+                    elif os.path.isdir(item_path) and os.path.exists(os.path.join(item_path, "config.json")):
+                        available_models.append(item)
+        except Exception as e:
+            print(f"Error scanning vibevoice models: {e}")
+        
         return {
             "required": {
-                "model_name": ("STRING", {"default": "microsoft/VibeVoice-1.5B"}),
+                "model_name": (available_models, {"default": available_models[0]}),
                 "precision": (["fp16", "bf16", "fp32"], {"default": "bf16"}),
                 "device": (["cuda", "cpu", "mps", "auto"], {"default": "auto"}),
             },
@@ -419,8 +439,8 @@ class VibeVoiceTTSLoader:
         processor = VibeVoiceProcessor.from_pretrained(model_path)
         
         # Load Model
-        # Note: VibeVoiceForConditionalGeneration is for TTS
-        model = VibeVoiceForConditionalGeneration.from_pretrained(
+        # Use Inference class which contains generate method
+        model = VibeVoiceForConditionalGenerationInference.from_pretrained(
             model_path,
             torch_dtype=dtype,
             device_map=device if device != "cpu" else None,
@@ -430,6 +450,8 @@ class VibeVoiceTTSLoader:
         if device == "cpu":
             model = model.to(device)
 
+        # Ensure lm_head shares weights with embed_tokens (tie_word_embeddings=true in config)
+        model.tie_weights()
         model.eval()
         
         return ({"model": model, "processor": processor, "device": device, "dtype": dtype},)
@@ -519,15 +541,6 @@ class VibeVoiceTTSInference:
 
         print(f"Generating TTS audio for text: {text[:50]}...")
         
-        # Check if the model has a generate method
-        if not hasattr(model, "generate"):
-             error_msg = (
-                 "❌ ERROR: This VibeVoice-1.5B model does not have a 'generate' method.\n"
-                 "The official VibeVoice repository has removed the inference code for the 1.5B TTS model due to policy reasons.\n"
-                 "Please use the 'VibeVoice Streaming' nodes (VibeVoiceStreamingLoader / Inference) with the 'VibeVoice-Realtime-0.5B' model instead, which is fully supported."
-             )
-             raise NotImplementedError(error_msg)
-
         with torch.no_grad():
              outputs = model.generate(
                  **inputs,
@@ -537,7 +550,7 @@ class VibeVoiceTTSInference:
 
         # Extract audio
         # outputs.speech_outputs is likely a list of waveforms
-        if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0:
+        if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0 and outputs.speech_outputs[0] is not None:
             generated_audio = outputs.speech_outputs[0].cpu().float()
             
             # Create ComfyUI audio output

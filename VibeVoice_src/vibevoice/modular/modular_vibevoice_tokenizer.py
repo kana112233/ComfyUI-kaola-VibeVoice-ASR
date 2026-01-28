@@ -26,13 +26,14 @@ import os
 try:
     from apex.normalization.fused_layer_norm import fused_rms_norm_affine
     APEX_AVAILABLE = True
-    # logger.info("APEX FusedRMSNorm is available and will be used for optimization")
+    logger.info("APEX FusedRMSNorm is available and will be used for optimization")
     if int(os.getenv("OPTIMIZE_FOR_SPEED", "0")) == 0:
         APEX_AVAILABLE = False
-        # logger.warning("APEX FusedRMSNorm is disabled by environment variable OPTIMIZE_FOR_SPEED=0")
+        logger.warning("APEX FusedRMSNorm is disabled by environment variable OPTIMIZE_FOR_SPEED=0")
 except ImportError:
     APEX_AVAILABLE = False
-    # logger.warning("APEX FusedRMSNorm not available, using native implementation")
+    logger.warning("APEX FusedRMSNorm not available, using native implementation")
+# APEX_AVAILABLE=False
 
 # Normalization modules
 class ConvLayerNorm(nn.LayerNorm):
@@ -296,8 +297,7 @@ class SConv1d(nn.Module):
                 cache: Optional[VibeVoiceTokenizerStreamingCache] = None,
                 sample_indices: Optional[torch.Tensor] = None,
                 use_cache: bool = False,
-                debug: bool = False,
-                is_final_chunk: bool = False) -> torch.Tensor:
+                debug: bool = False) -> torch.Tensor:
         """
         Forward pass with optional streaming support via cache.
         
@@ -307,7 +307,6 @@ class SConv1d(nn.Module):
             sample_indices: Indices identifying each sample for cache management
             use_cache: Whether to use cached states for streaming
             debug: Whether to print debug information
-            is_final_chunk: Whether this is the final chunk (adds extra padding for alignment)
             
         Returns:
             Output tensor
@@ -323,13 +322,12 @@ class SConv1d(nn.Module):
         assert sample_indices is not None, "sample_indices must be provided for streaming mode"
         assert len(sample_indices) == B, "sample_indices must match batch size"
         
-        return self._forward_streaming(x, cache, sample_indices, debug, is_final_chunk)
+        return self._forward_streaming(x, cache, sample_indices, debug)
     
     def _forward_streaming(self, x: torch.Tensor, 
                           cache: VibeVoiceTokenizerStreamingCache,
                           sample_indices: torch.Tensor,
-                          debug: bool = False,
-                          is_final_chunk: bool = False) -> torch.Tensor:
+                          debug: bool = False) -> torch.Tensor:
         """Streaming forward pass with cache operations kept separate from compiled code"""
         B, C, T = x.shape
         
@@ -352,16 +350,6 @@ class SConv1d(nn.Module):
             input_with_context = torch.cat([cached_states, x], dim=2)
         else:
             input_with_context = x
-        
-        # For final chunk, add extra padding to ensure ceil behavior (same as non-streaming)
-        if is_final_chunk:
-            extra_padding = get_extra_padding_for_conv1d(
-                input_with_context, self.kernel_size, self.stride, self.padding_total
-            )
-            if extra_padding > 0:
-                input_with_context = pad1d(input_with_context, (0, extra_padding), mode=self.pad_mode)
-                if debug:
-                    print(f"[DEBUG] Final chunk: added extra_padding={extra_padding}")
             
         if debug:
             print(f"[DEBUG] Input shape: {x.shape}, Cache shape: {cached_states.shape}, Combined: {input_with_context.shape}")
@@ -768,7 +756,7 @@ class TokenizerEncoder(nn.Module):
         )
         
         self.stages = nn.ModuleList()
-        dp_rates = np.linspace(0, drop_path_rate, sum(self.depths)).tolist() 
+        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depths), device='cpu')] 
         cur = 0
 
         for i in range(len(self.depths)):
@@ -785,12 +773,12 @@ class TokenizerEncoder(nn.Module):
             self.norm = nn.Identity()
         self.head = SConv1d(in_ch, self.dimension, kernel_size=last_kernel_size, causal=self.causal, pad_mode=pad_mode, norm=norm, bias=bias)
 
-    def forward_features(self, x, cache=None, sample_indices=None, use_cache=False, debug=False, is_final_chunk=False):
+    def forward_features(self, x, cache=None, sample_indices=None, use_cache=False, debug=False):
         for i in range(len(self.depths)):
             # Apply downsampling
             for layer in self.downsample_layers[i]:
                 if isinstance(layer, SConv1d):
-                    x = layer(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug, is_final_chunk=is_final_chunk)
+                    x = layer(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
                 else:
                     x = layer(x)
             
@@ -800,7 +788,7 @@ class TokenizerEncoder(nn.Module):
                     # Block1D forward with cache support
                     residual = x
                     x = block.norm(x)
-                    x = block.mixer.conv(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug, is_final_chunk=is_final_chunk)
+                    x = block.mixer.conv(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
                     if block.gamma is not None:
                         x = x * block.gamma.unsqueeze(-1)
                     x = residual + x
@@ -819,9 +807,9 @@ class TokenizerEncoder(nn.Module):
 
         return self.norm(x)
 
-    def forward(self, x, cache=None, sample_indices=None, use_cache=False, debug=False, is_final_chunk=False):
-        x = self.forward_features(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug, is_final_chunk=is_final_chunk)
-        x = self.head(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug, is_final_chunk=is_final_chunk)
+    def forward(self, x, cache=None, sample_indices=None, use_cache=False, debug=False):
+        x = self.forward_features(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
+        x = self.head(x, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
         return x
 
 
@@ -905,7 +893,7 @@ class TokenizerDecoder(nn.Module):
         )
 
         self.stages = nn.ModuleList()
-        dp_rates = np.linspace(0, drop_path_rate, sum(self.depths)).tolist() 
+        dp_rates = [x.item() for x in torch.linspace(0, drop_path_rate, sum(self.depths), device='cpu')] 
         cur = 0
         
         # Create stages in the same order as the original model
@@ -1091,9 +1079,9 @@ class VibeVoiceAcousticTokenizerModel(PreTrainedModel):
                 nn.init.zeros_(module.bias)
     
     @torch.no_grad()
-    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False, is_final_chunk=False):
+    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False):
         """Convert audio to latent representations"""
-        latents = self.encoder(audio, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug, is_final_chunk=is_final_chunk)
+        latents = self.encoder(audio, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
         return VibeVoiceTokenizerEncoderOutput(mean=latents.permute(0, 2, 1), std=self.fix_std)
     
     @torch.no_grad()
@@ -1181,9 +1169,9 @@ class VibeVoiceSemanticTokenizerModel(PreTrainedModel):
                 nn.init.zeros_(module.bias)
     
     @torch.no_grad()
-    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False, is_final_chunk=False):
+    def encode(self, audio, cache=None, sample_indices=None, use_cache=False, debug=False):
         """Convert audio to latent representations"""
-        latents = self.encoder(audio, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug, is_final_chunk=is_final_chunk)
+        latents = self.encoder(audio, cache=cache, sample_indices=sample_indices, use_cache=use_cache, debug=debug)
         return VibeVoiceTokenizerEncoderOutput(mean=latents.permute(0, 2, 1))
     
     @torch.no_grad()

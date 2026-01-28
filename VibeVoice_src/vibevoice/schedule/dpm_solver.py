@@ -340,37 +340,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         if num_inference_steps is None and timesteps is None:
             raise ValueError("Must pass exactly one of `num_inference_steps` or `timesteps`.")
-
-        # Re-materialize meta tensors if needed (fix for accelerate init_empty_weights)
-        if hasattr(self, "lambda_t") and self.lambda_t.device.type == "meta":
-            # Recompute betas and derived values on CPU
-            if self.config.trained_betas is not None:
-                self.betas = torch.tensor(self.config.trained_betas, dtype=torch.float32)
-            elif self.config.beta_schedule == "linear":
-                self.betas = torch.linspace(self.config.beta_start, self.config.beta_end, self.config.num_train_timesteps, dtype=torch.float32)
-            elif self.config.beta_schedule == "scaled_linear":
-                self.betas = torch.linspace(self.config.beta_start**0.5, self.config.beta_end**0.5, self.config.num_train_timesteps, dtype=torch.float32) ** 2
-            elif self.config.beta_schedule in ["squaredcos_cap_v2", "cosine"]:
-                self.betas = betas_for_alpha_bar(self.config.num_train_timesteps, alpha_transform_type="cosine")
-            elif self.config.beta_schedule == "cauchy":
-                self.betas = betas_for_alpha_bar(self.config.num_train_timesteps, alpha_transform_type="cauchy")
-            elif self.config.beta_schedule == "laplace":
-                 self.betas = betas_for_alpha_bar(self.config.num_train_timesteps, alpha_transform_type="laplace")
-            
-            if self.config.rescale_betas_zero_snr:
-                self.betas = rescale_zero_terminal_snr(self.betas)
-            
-            self.alphas = 1.0 - self.betas
-            self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
-            
-            if self.config.rescale_betas_zero_snr:
-                self.alphas_cumprod[-1] = 2**-24
-            
-            self.alpha_t = torch.sqrt(self.alphas_cumprod)
-            self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
-            self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
-            self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
-
         if num_inference_steps is not None and timesteps is not None:
             raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
         if timesteps is not None and self.config.use_karras_sigmas:
@@ -378,13 +347,41 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if timesteps is not None and self.config.use_lu_lambdas:
             raise ValueError("Cannot use `timesteps` with `config.use_lu_lambdas = True`")
 
+        # PATCH: If alphas_cumprod is on meta device, recompute it and related tensors on CPU
+        if hasattr(self.alphas_cumprod, 'is_meta') and self.alphas_cumprod.is_meta:
+            betas = torch.linspace(
+                self.config.beta_start, self.config.beta_end, 
+                self.config.num_train_timesteps, dtype=torch.float32, device='cpu'
+            )
+            alphas = 1.0 - betas
+            self.alphas_cumprod = torch.cumprod(alphas, dim=0)
+            alpha_t = torch.sqrt(self.alphas_cumprod)
+            sigma_t = torch.sqrt(1 - self.alphas_cumprod)
+            self.lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
+
         if timesteps is not None:
             timesteps = np.array(timesteps).astype(np.int64)
         else:
             # Clipping the minimum of all lambda(t) for numerical stability.
             # This is critical for cosine (squaredcos_cap_v2) noise schedule.
-            clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
-            last_timestep = ((self.config.num_train_timesteps - clipped_idx).cpu().numpy()).item()
+            
+            # PATCH: Handle meta tensors (recompute if needed)
+            if self.lambda_t.is_meta or (hasattr(self.alphas_cumprod, 'is_meta') and self.alphas_cumprod.is_meta):
+                # Recompute from config values on CPU to avoid meta error
+                betas = torch.linspace(
+                    self.config.beta_start, self.config.beta_end, 
+                    self.config.num_train_timesteps, dtype=torch.float32, device='cpu'
+                )
+                alphas = 1.0 - betas
+                alphas_cumprod = torch.cumprod(alphas, dim=0)
+                alpha_t = torch.sqrt(alphas_cumprod)
+                sigma_t = torch.sqrt(1 - alphas_cumprod)
+                lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
+                clipped_idx = torch.searchsorted(torch.flip(lambda_t, [0]), self.config.lambda_min_clipped)
+            else:
+                clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
+            
+            last_timestep = ((self.config.num_train_timesteps - clipped_idx).numpy()).item()
 
             # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
             if self.config.timestep_spacing == "linspace":
