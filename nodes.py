@@ -766,6 +766,171 @@ class VibeVoiceTTSInferenceMultiSpeaker:
         return ({"waveform": output_audio, "sample_rate": target_sr},)
 
 
+class VibeVoiceTTSInferenceMultiSpeakerBatch:
+    """
+    Multi-Speaker TTS using batch processing with voice_samples array.
+    This node uses processor's internal mapping to handle multiple speakers in one generation call.
+
+    Note: This is an experimental approach. The recommended method is VibeVoiceTTSInferenceMultiSpeaker
+    which generates each speaker separately and concatenates the results.
+    """
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "vibevoice_tts_model": ("VIBEVOICE_TTS_MODEL",),
+                "text": ("STRING", {"multiline": True, "default": "Speaker 0: Hello. Speaker 1: Hi there."}),
+                "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536}),
+                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1}),
+                "cfg_scale": ("FLOAT", {"default": 1.5, "min": 0.1, "max": 10.0, "step": 0.1}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            },
+            "optional": {
+                "speaker_0_audio": ("AUDIO",),
+                "speaker_1_audio": ("AUDIO",),
+                "speaker_2_audio": ("AUDIO",),
+                "speaker_3_audio": ("AUDIO",),
+            }
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    FUNCTION = "generate"
+    CATEGORY = "VibeVoice"
+
+    def generate(self, vibevoice_tts_model, text, max_new_tokens, temperature, cfg_scale, seed,
+                 speaker_0_audio=None, speaker_1_audio=None, speaker_2_audio=None, speaker_3_audio=None):
+        if seed is not None:
+             torch.manual_seed(seed)
+             if torch.cuda.is_available():
+                 torch.cuda.manual_seed_all(seed)
+
+        model = vibevoice_tts_model["model"]
+        processor = vibevoice_tts_model["processor"]
+        device = vibevoice_tts_model["device"]
+        dtype = vibevoice_tts_model["dtype"]
+
+        print(f"\n{'='*60}")
+        print(f"Multi-Speaker TTS - Batch Processing Mode (Experimental)")
+        print(f"{'='*60}\n")
+
+        # Parse text to find all speaker IDs used
+        import re
+        pattern = r'Speaker\s+(\d+)\s*:'
+        matches = re.findall(pattern, text, re.IGNORECASE)
+
+        if not matches:
+            print("Warning: No Speaker markers found, treating as Speaker 0")
+            text = f"Speaker 0: {text}"
+            matches = ["0"]
+
+        # Get unique original speaker IDs and sort them
+        original_speaker_ids = sorted(set(int(m) for m in matches))
+        print(f"Original speaker IDs in text: {original_speaker_ids}")
+
+        # Create remapping: {original_id: consecutive_id}
+        # E.g., [1, 3] -> {1: 0, 3: 1}
+        speaker_remap = {orig_id: new_id for new_id, orig_id in enumerate(original_speaker_ids)}
+        print(f"Remapping to consecutive IDs: {speaker_remap}")
+
+        # Rewrite text with consecutive speaker IDs
+        def replace_speaker_id(match):
+            original_id = int(match.group(1))
+            new_id = speaker_remap[original_id]
+            return f"Speaker {new_id}:"
+
+        remapped_text = re.sub(r'Speaker\s+(\d+)\s*:', replace_speaker_id, text, flags=re.IGNORECASE)
+        print(f"\nRemapped text:\n{remapped_text}\n")
+
+        # Map input audios by original speaker ID
+        speaker_audios = [speaker_0_audio, speaker_1_audio, speaker_2_audio, speaker_3_audio]
+
+        # Determine target sample rate
+        target_sr = 24000
+        if hasattr(processor, "audio_processor") and hasattr(processor.audio_processor, "sampling_rate"):
+            target_sr = processor.audio_processor.sampling_rate
+
+        # Build voice_samples array in remapped order
+        # voice_samples[0] should correspond to the speaker that was remapped to 0
+        # voice_samples[1] should correspond to the speaker that was remapped to 1, etc.
+        voice_samples = []
+        for new_id, original_id in enumerate(original_speaker_ids):
+            ref_audio = speaker_audios[original_id] if original_id < len(speaker_audios) else None
+
+            if ref_audio is not None:
+                waveform = ref_audio["waveform"]
+                # mix to mono
+                if waveform.dim() == 3:
+                    waveform = waveform[0]
+                if waveform.shape[0] > 1:
+                    waveform = torch.mean(waveform, dim=0, keepdim=True)
+                waveform_np = waveform.squeeze().cpu().numpy()
+
+                # Resample if needed
+                input_sr = ref_audio["sample_rate"]
+                if input_sr != target_sr:
+                    waveform_np = librosa.resample(waveform_np, orig_sr=input_sr, target_sr=target_sr)
+
+                voice_samples.append(waveform_np)
+                print(f"✓ Remapped Speaker {new_id} (orig Speaker {original_id}): Using reference audio ({len(waveform_np)} samples)")
+            else:
+                # Use minimal silence placeholder
+                silence = np.zeros(int(target_sr * 0.01), dtype=np.float32)  # 10ms
+                voice_samples.append(silence)
+                print(f"○ Remapped Speaker {new_id} (orig Speaker {original_id}): Using default voice (minimal placeholder)")
+
+        print(f"\nProcessor will receive:")
+        print(f"  - Text with consecutive Speaker IDs: 0, 1, 2...")
+        print(f"  - voice_samples array length: {len(voice_samples)}")
+        print(f"  - Processor will use voice_samples[:num_unique_speakers] via enumerate")
+        print(f"\nGenerating audio in batch mode...\n")
+
+        # Prepare inputs with voice_samples
+        inputs = processor(
+            text=remapped_text,
+            voice_samples=voice_samples if voice_samples else None,
+            return_tensors="pt",
+        )
+
+        inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k,v in inputs.items()}
+
+        # Generation config
+        generation_config = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "do_sample": temperature > 0,
+            "cfg_scale": cfg_scale,
+        }
+
+        # Generate audio for all speakers in one call
+        with torch.no_grad():
+             outputs = model.generate(
+                 **inputs,
+                 **generation_config,
+                 tokenizer=processor.tokenizer,
+             )
+
+        # Extract audio
+        if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0 and outputs.speech_outputs[0] is not None:
+            generated_audio = outputs.speech_outputs[0].cpu().float()
+
+            # Ensure proper dimensions
+            while generated_audio.dim() > 1:
+                generated_audio = generated_audio.squeeze(0)
+
+            print(f"✓ Generated {generated_audio.shape[0]} samples ({generated_audio.shape[0]/target_sr:.2f}s)")
+            print(f"\n{'='*60}")
+            print(f"Batch Processing Complete")
+            print(f"{'='*60}\n")
+
+            # Format for ComfyUI: [batch, channels, samples]
+            output_audio = generated_audio.unsqueeze(0).unsqueeze(0)
+            return ({"waveform": output_audio, "sample_rate": target_sr},)
+        else:
+            print("✗ Error: No audio generated")
+            return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": target_sr},)
+
+
 class VibeVoiceStreamingLoader:
     @classmethod
     def INPUT_TYPES(s):
@@ -1039,6 +1204,7 @@ NODE_CLASS_MAPPINGS = {
     "VibeVoiceTTSLoader": VibeVoiceTTSLoader,
     "VibeVoiceTTSInference": VibeVoiceTTSInference,
     "VibeVoiceTTSInferenceMultiSpeaker": VibeVoiceTTSInferenceMultiSpeaker,
+    "VibeVoiceTTSInferenceMultiSpeakerBatch": VibeVoiceTTSInferenceMultiSpeakerBatch,
     "VibeVoiceStreamingLoader": VibeVoiceStreamingLoader,
     "VibeVoiceStreamingInference": VibeVoiceStreamingInference,
 }
@@ -1050,6 +1216,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VibeVoiceTTSLoader": "VibeVoice TTS Model Loader",
     "VibeVoiceTTSInference": "VibeVoice TTS Inference",
     "VibeVoiceTTSInferenceMultiSpeaker": "VibeVoice TTS Inference (Multi-Speaker)",
+    "VibeVoiceTTSInferenceMultiSpeakerBatch": "VibeVoice TTS Inference (Multi-Speaker Batch)",
     "VibeVoiceStreamingLoader": "VibeVoice Streaming Model Loader",
     "VibeVoiceStreamingInference": "VibeVoice Streaming Inference",
 }

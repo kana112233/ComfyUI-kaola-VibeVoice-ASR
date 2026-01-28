@@ -96,8 +96,8 @@ If you have internet access, it will download automatically (~7B model) to your 
     *   **text**: Input text in format `"Speaker 0: Hello. Speaker 1: Hi."`
     *   **reference_audio**: (Optional) Single reference audio for voice cloning.
 
-5.  **VibeVoice TTS Inference (Multi-Speaker)** ⭐ NEW
-    *   Advanced TTS with separate reference audio for each speaker.
+5.  **VibeVoice TTS Inference (Multi-Speaker)** ⭐ RECOMMENDED
+    *   Multi-speaker TTS using **segment-by-segment generation** (generates each speaker separately, then concatenates).
     *   **text**: Input text in format `"Speaker 0: Hello. Speaker 1: Hi."`
     *   **speaker_0_audio**: (Optional) Reference audio for Speaker 0's voice.
     *   **speaker_1_audio**: (Optional) Reference audio for Speaker 1's voice.
@@ -105,11 +105,22 @@ If you have internet access, it will download automatically (~7B model) to your 
     *   **speaker_3_audio**: (Optional) Reference audio for Speaker 3's voice.
     *   Each speaker will use the voice characteristics from their corresponding reference audio.
     *   If no reference audio is provided for a speaker, the model's default voice is used.
+    *   **Method**: Generates each segment separately with correct reference audio, then concatenates with 100ms silence.
+    *   **Status**: ✅ Verified working correctly
+
+6.  **VibeVoice TTS Inference (Multi-Speaker Batch)** ⚠️ EXPERIMENTAL
+    *   Multi-speaker TTS using **batch processing** (attempts to generate all speakers in one model call).
+    *   Same input parameters as the segment-by-segment version.
+    *   **Method**: Remaps speaker IDs to consecutive numbers, builds voice_samples array, generates in one call.
+    *   **Status**: ⚠️ Experimental - may have speaker ID mapping issues in edge cases.
+    *   **Use case**: Only use if you need maximum generation speed and are willing to debug potential issues.
+    *   **Recommendation**: Use the segment-by-segment version (node #5) for reliable results.
 
 ### Example Workflows
 - **ASR**: `examples/vibevoice_workflow_example.json` - Speech recognition with transcription
 - **TTS Basic**: `examples/vibevoice_tts_workflow.json` - Basic text-to-speech
-- **TTS Multi-Speaker**: `examples/vibevoice_tts_multispeaker_workflow.json` - Multi-speaker TTS with voice control
+- **TTS Multi-Speaker (Recommended)**: `examples/vibevoice_tts_multispeaker_workflow.json` - Multi-speaker TTS with segment-by-segment generation
+- **TTS Multi-Speaker Batch (Experimental)**: `examples/vibevoice_tts_multispeaker_batch_workflow.json` - Multi-speaker TTS with batch processing
 - **Streaming**: `examples/vibevoice_streaming_workflow.json` - Real-time streaming inference
 
 Drag and drop any workflow into ComfyUI to get started.

@@ -1,0 +1,206 @@
+{
+    "last_node_id": 6,
+    "last_link_id": 5,
+    "nodes": [
+        {
+            "id": 1,
+            "type": "VibeVoiceTTSLoader",
+            "pos": [100, 100],
+            "size": [350, 110],
+            "flags": {},
+            "order": 0,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "vibevoice_tts_model",
+                    "type": "VIBEVOICE_TTS_MODEL",
+                    "links": [1],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "VibeVoiceTTSLoader"
+            },
+            "widgets_values": [
+                "microsoft/VibeVoice-1.5B",
+                "bf16",
+                "auto"
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
+        },
+        {
+            "id": 2,
+            "type": "VibeVoiceTTSInferenceMultiSpeakerBatch",
+            "pos": [500, 100],
+            "size": [450, 340],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "vibevoice_tts_model",
+                    "type": "VIBEVOICE_TTS_MODEL",
+                    "link": 1
+                },
+                {
+                    "name": "speaker_0_audio",
+                    "type": "AUDIO",
+                    "link": 2,
+                    "shape": 7
+                },
+                {
+                    "name": "speaker_1_audio",
+                    "type": "AUDIO",
+                    "link": 3,
+                    "shape": 7
+                },
+                {
+                    "name": "speaker_2_audio",
+                    "type": "AUDIO",
+                    "link": null,
+                    "shape": 7
+                },
+                {
+                    "name": "speaker_3_audio",
+                    "type": "AUDIO",
+                    "link": null,
+                    "shape": 7
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "audio",
+                    "type": "AUDIO",
+                    "links": [4],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "VibeVoiceTTSInferenceMultiSpeakerBatch"
+            },
+            "widgets_values": [
+                "Speaker 0: Welcome to our podcast! Today we'll discuss AI technology. Speaker 1: Thanks for having me! I'm excited to share my thoughts on this fascinating topic.",
+                4096,
+                0.7,
+                1.5,
+                0
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+        },
+        {
+            "id": 3,
+            "type": "LoadAudio",
+            "pos": [100, 270],
+            "size": [320, 140],
+            "flags": {},
+            "order": 1,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "AUDIO",
+                    "type": "AUDIO",
+                    "links": [2],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "LoadAudio"
+            },
+            "widgets_values": [
+                "speaker0_reference.wav",
+                null,
+                null
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+        },
+        {
+            "id": 4,
+            "type": "LoadAudio",
+            "pos": [100, 450],
+            "size": [320, 140],
+            "flags": {},
+            "order": 2,
+            "mode": 0,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "AUDIO",
+                    "type": "AUDIO",
+                    "links": [3],
+                    "shape": 3,
+                    "slot_index": 0
+                }
+            ],
+            "properties": {
+                "Node name for S&R": "LoadAudio"
+            },
+            "widgets_values": [
+                "speaker1_reference.wav",
+                null,
+                null
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+        },
+        {
+            "id": 5,
+            "type": "SaveAudio",
+            "pos": [1000, 100],
+            "size": [320, 100],
+            "flags": {},
+            "order": 4,
+            "mode": 0,
+            "inputs": [
+                {
+                    "name": "audio",
+                    "type": "AUDIO",
+                    "link": 4
+                }
+            ],
+            "outputs": [],
+            "properties": {
+                "Node name for S&R": "SaveAudio"
+            },
+            "widgets_values": [
+                "vibevoice_multispeaker_batch_output"
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+        },
+        {
+            "id": 6,
+            "type": "Note",
+            "pos": [100, 630],
+            "size": [1220, 340],
+            "flags": {},
+            "order": 5,
+            "mode": 0,
+            "properties": {
+                "text": ""
+            },
+            "widgets_values": [
+                "VibeVoice Multi-Speaker TTS (Batch Processing) - 批处理模式使用说明:\n\n⚠️ 实验性功能 - Experimental Feature:\n本节点使用 processor 的内部映射机制，一次性生成所有说话人的音频。\n这是一个实验性方案，可能存在 speaker ID 映射问题。\n\n推荐方案：使用 VibeVoice TTS Inference (Multi-Speaker) 节点（分段生成模式）\n\n🔧 工作原理 - How it works:\n\n1. Speaker ID 重映射:\n   - 检测文本中的所有 speaker_id (如 [1, 3])\n   - 重映射为连续ID: {1→0, 3→1}\n   - 重写文本: \"Speaker 1:\" → \"Speaker 0:\", \"Speaker 3:\" → \"Speaker 1:\"\n\n2. Voice Samples 构建:\n   - 按重映射后的顺序构建 voice_samples 数组\n   - voice_samples[0] = speaker_1_audio\n   - voice_samples[1] = speaker_3_audio\n\n3. 批处理生成:\n   - 一次性调用 processor 和 model\n   - processor 使用 enumerate 分配音频\n   - 模型生成完整的对话音频\n\n📋 使用方法:\n\n1. Model Loader: 加载 TTS 模型\n\n2. LoadAudio 节点（可选）:\n   - speaker_0_audio: Speaker 0 的参考音频\n   - speaker_1_audio: Speaker 1 的参考音频\n   - speaker_2_audio: Speaker 2 的参考音频（可选）\n   - speaker_3_audio: Speaker 3 的参考音频（可选）\n\n3. TTS Inference (Multi-Speaker Batch):\n   - text: 标准格式 \"Speaker 0: ... Speaker 1: ...\"\n   - 系统会自动重映射非连续的 speaker ID\n   - 一次性生成所有音频\n\n✓ 优势:\n   - 单次模型调用，可能更快\n   - 理论上可以保持说话人间的连贯性\n\n⚠️ 限制:\n   - 实验性功能，映射逻辑复杂\n   - 可能存在 speaker ID 不匹配的边界情况\n   - 调试困难，不易定位问题\n\n💡 建议:\n   - 优先使用分段生成模式（VibeVoiceTTSInferenceMultiSpeaker）\n   - 只有在需要最快生成速度时才考虑批处理模式\n   - 如果遇到音色错误，请切换到分段模式\n\n🔬 技术细节:\n   - 使用 processor(text, voice_samples) 一次性处理\n   - 依赖 processor 内部的 _create_voice_prompt 和 enumerate 逻辑\n   - 通过文本重写确保 speaker ID 连续性"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
+        }
+    ],
+    "links": [
+        [1, 1, 0, 2, 0, "VIBEVOICE_TTS_MODEL"],
+        [2, 3, 0, 2, 1, "AUDIO"],
+        [3, 4, 0, 2, 2, "AUDIO"],
+        [4, 2, 0, 5, 0, "AUDIO"]
+    ],
+    "groups": [],
+    "config": {},
+    "extra": {},
+    "version": 0.4
+}
