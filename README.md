@@ -11,6 +11,29 @@ This node allows you to perform high-quality, long-form speech recognition, spea
 *   **Context/Hotwords**: Improve accuracy for specific terms or names by providing context.
 *   **Rich Output**: Provides both SRT strings and raw JSON data for advanced processing.
 
+
+## Model Download / 模型下载
+
+Please download the **VibeVoice-Realtime-0.5B** model (do NOT use the 1.5B version).
+请下载 **VibeVoice-Realtime-0.5B** 模型 (不要使用 1.5B 版本)。
+
+**Recommended Path / 推荐路径:**
+`ComfyUI/models/vibevoice/VibeVoice-Realtime-0.5B`
+
+**Download Link / 下载链接:**
+[https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B](https://huggingface.co/microsoft/VibeVoice-Realtime-0.5B)
+
+Ensure the folder structure looks like this / 确保文件夹结构如下:
+```
+ComfyUI/
+    models/
+        vibevoice/
+            VibeVoice-Realtime-0.5B/
+                config.json
+                model.safetensors
+                ...
+```
+
 ## Installation
 
 1.  **Clone the repository** into your ComfyUI `custom_nodes` directory:
