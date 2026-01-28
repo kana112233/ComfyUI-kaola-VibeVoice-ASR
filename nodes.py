@@ -612,18 +612,68 @@ class VibeVoiceTTSInferenceMultiSpeaker:
         device = vibevoice_tts_model["device"]
         dtype = vibevoice_tts_model["dtype"]
 
-        # Handle multiple reference audios
-        # IMPORTANT: voice_samples index must match speaker_id (Speaker 0 -> index 0, Speaker 1 -> index 1, etc.)
+        # Auto-format text if needed first (before parsing)
+        import re
+        if not re.match(r"Speaker\s+\d+\s*:", text, re.IGNORECASE):
+             print(f"Auto-formatting text to 'Speaker 0: {text[:20]}...'")
+             text = f"Speaker 0: {text}"
+
+        # Parse text to extract speaker IDs that are actually used
+        lines = text.strip().split("\n")
+        parsed_speakers = []
+        for line in lines:
+            match = re.match(r"Speaker\s+(\d+)\s*:", line.strip(), re.IGNORECASE)
+            if match:
+                speaker_id = int(match.group(1))
+                parsed_speakers.append(speaker_id)
+
+        if not parsed_speakers:
+            raise ValueError("No valid speaker lines found in text")
+
+        # Get unique original speaker IDs
+        unique_original_speakers = sorted(set(parsed_speakers))
+
+        # CRITICAL FIX: Remap speakers to be CONSECUTIVE starting from 0
+        # This fixes the processor's enumerate vs speaker_id mismatch
+        # Original: Speaker 1, Speaker 3 -> Remap to: Speaker 0, Speaker 1
+        speaker_remap = {original_id: new_id for new_id, original_id in enumerate(unique_original_speakers)}
+
+        print(f"\nOriginal speakers in text: {unique_original_speakers}")
+        print(f"Remapping to consecutive IDs: {speaker_remap}")
+
+        # Rewrite text with consecutive speaker IDs
+        new_lines = []
+        for line in lines:
+            match = re.match(r"(Speaker\s+)(\d+)(\s*:.*)$", line.strip(), re.IGNORECASE)
+            if match:
+                prefix, old_id, suffix = match.groups()
+                old_id_int = int(old_id)
+                new_id = speaker_remap[old_id_int]
+                new_line = f"{prefix}{new_id}{suffix}"
+                new_lines.append(new_line)
+            elif line.strip():
+                new_lines.append(line)
+
+        text = "\n".join(new_lines)
+        print(f"Rewritten text with consecutive IDs:\n{text}\n")
+
+        # Map input audios by speaker ID
         speaker_audios = [speaker_0_audio, speaker_1_audio, speaker_2_audio, speaker_3_audio]
 
-        # Determine target sample rate first
+        # Determine target sample rate
         target_sr = 24000
         if hasattr(processor, "audio_processor") and hasattr(processor.audio_processor, "sampling_rate"):
             target_sr = processor.audio_processor.sampling_rate
 
-        # Process each speaker's audio, maintaining index correspondence
+        # Build voice_samples array according to the remapped speaker order
+        # Text now uses consecutive IDs (0, 1, 2...), so voice_samples[i] should correspond to original speaker unique_original_speakers[i]
         voice_samples = []
-        for idx, ref_audio in enumerate(speaker_audios):
+        actual_ref_count = 0
+
+        for new_id, original_id in enumerate(unique_original_speakers):
+            # Get the reference audio for the ORIGINAL speaker ID
+            ref_audio = speaker_audios[original_id] if original_id < len(speaker_audios) else None
+
             if ref_audio is not None:
                 waveform = ref_audio["waveform"]
                 # mix to mono
@@ -639,28 +689,22 @@ class VibeVoiceTTSInferenceMultiSpeaker:
                     waveform_np = librosa.resample(waveform_np, orig_sr=input_sr, target_sr=target_sr)
 
                 voice_samples.append(waveform_np)
-                print(f"✓ Speaker {idx}: Using reference audio ({len(waveform_np)} samples at {target_sr}Hz)")
+                actual_ref_count += 1
+                print(f"✓ Remapped Speaker {new_id} (orig Speaker {original_id}): Using reference audio ({len(waveform_np)} samples at {target_sr}Hz)")
             else:
-                # Create a very short silence placeholder to maintain index correspondence
-                # This ensures voice_samples[i] corresponds to Speaker i
-                # Using minimal silence (10ms) to avoid affecting model's voice generation
-                silence = np.zeros(int(target_sr * 0.01), dtype=np.float32)  # 10ms silence placeholder
+                # No reference audio provided, use minimal silence
+                silence = np.zeros(int(target_sr * 0.01), dtype=np.float32)  # 10ms silence
                 voice_samples.append(silence)
-                print(f"○ Speaker {idx}: Using default voice (no reference audio provided)")
+                print(f"○ Remapped Speaker {new_id} (orig Speaker {original_id}): Using default voice")
 
-        # Auto-format text if needed
-        import re
-        if not re.match(r"Speaker\s+\d+\s*:", text, re.IGNORECASE):
-             print(f"Auto-formatting text to 'Speaker 0: {text[:20]}...'")
-             text = f"Speaker 0: {text}"
-
-        # Count actual reference audios (non-placeholder)
-        actual_ref_count = sum(1 for i, audio in enumerate(speaker_audios) if audio is not None)
+        # Summary
         print(f"\n{'='*60}")
         print(f"TTS Generation Summary:")
-        print(f"  Total speakers configured: {len(voice_samples)}")
-        print(f"  Speakers with reference audio: {actual_ref_count}")
-        print(f"  Speakers using default voice: {len(voice_samples) - actual_ref_count}")
+        print(f"  Original speaker IDs in input: {unique_original_speakers}")
+        print(f"  Remapped to consecutive IDs: {list(range(len(unique_original_speakers)))}")
+        print(f"  Total speakers: {len(voice_samples)}")
+        print(f"  With reference audio: {actual_ref_count}")
+        print(f"  Using default voice: {len(voice_samples) - actual_ref_count}")
         print(f"{'='*60}\n")
 
         # Prepare inputs
