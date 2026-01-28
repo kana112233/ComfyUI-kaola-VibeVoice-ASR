@@ -616,24 +616,37 @@ class VibeVoiceTTSInferenceMultiSpeaker:
         speaker_audios = [speaker_0_audio, speaker_1_audio, speaker_2_audio, speaker_3_audio]
 
         # Parse text to extract speaker segments
+        # Support both single-line and multi-line formats:
+        # - Single line: "Speaker 0: Hello. Speaker 1: Hi."
+        # - Multi-line: "Speaker 0: Hello.\nSpeaker 1: Hi."
         import re
-        lines = text.strip().split("\n")
-        segments = []  # List of (speaker_id, text_content)
 
-        for line in lines:
-            if not line.strip():
-                continue
-            match = re.match(r"Speaker\s+(\d+)\s*:\s*(.+)$", line.strip(), re.IGNORECASE)
-            if match:
+        # Find all "Speaker N:" markers and their positions
+        pattern = r'Speaker\s+(\d+)\s*:'
+        matches = list(re.finditer(pattern, text, re.IGNORECASE))
+
+        if not matches:
+            # No speaker markers found, treat entire text as Speaker 0
+            print("Warning: No Speaker markers found, treating as Speaker 0")
+            segments = [(0, text.strip())]
+        else:
+            segments = []
+            for i, match in enumerate(matches):
                 speaker_id = int(match.group(1))
-                text_content = match.group(2).strip()
-                segments.append((speaker_id, text_content))
-            else:
-                # No speaker prefix, treat as Speaker 0
-                segments.append((0, line.strip()))
+                start_pos = match.end()  # Position after "Speaker N:"
 
-        if not segments:
-            raise ValueError("No valid text segments found")
+                # Find end position (start of next Speaker or end of text)
+                if i < len(matches) - 1:
+                    end_pos = matches[i + 1].start()
+                else:
+                    end_pos = len(text)
+
+                # Extract text content
+                text_content = text[start_pos:end_pos].strip()
+
+                if text_content:  # Skip empty segments
+                    segments.append((speaker_id, text_content))
+                    print(f"Parsed: Speaker {speaker_id}: {text_content[:50]}...")
 
         print(f"\n{'='*60}")
         print(f"Multi-Speaker TTS - Separate Generation Mode")
@@ -707,13 +720,36 @@ class VibeVoiceTTSInferenceMultiSpeaker:
                     tokenizer=processor.tokenizer,
                 )
 
+            # Extract audio - DEBUG
+            print(f"  DEBUG: outputs type: {type(outputs)}")
+            print(f"  DEBUG: has speech_outputs: {hasattr(outputs, 'speech_outputs')}")
+
+            if hasattr(outputs, "speech_outputs"):
+                print(f"  DEBUG: speech_outputs type: {type(outputs.speech_outputs)}")
+                print(f"  DEBUG: speech_outputs length: {len(outputs.speech_outputs) if outputs.speech_outputs else 0}")
+                if outputs.speech_outputs and len(outputs.speech_outputs) > 0:
+                    print(f"  DEBUG: speech_outputs[0] shape: {outputs.speech_outputs[0].shape if outputs.speech_outputs[0] is not None else 'None'}")
+
             # Extract audio
             if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0 and outputs.speech_outputs[0] is not None:
                 segment_audio = outputs.speech_outputs[0].cpu().float()
-                all_audio_segments.append(segment_audio)
-                print(f"  Generated {len(segment_audio)} samples")
+
+                print(f"  DEBUG: Raw segment_audio shape: {segment_audio.shape}, numel: {segment_audio.numel()}")
+
+                # Ensure 1D tensor: squeeze all extra dimensions
+                while segment_audio.dim() > 1:
+                    segment_audio = segment_audio.squeeze(0)
+
+                print(f"  DEBUG: After squeeze: {segment_audio.shape}")
+
+                # Verify we got valid audio
+                if segment_audio.numel() > 0:
+                    all_audio_segments.append(segment_audio)
+                    print(f"  ✓ Generated {segment_audio.shape[0]} samples ({segment_audio.shape[0]/target_sr:.2f}s)")
+                else:
+                    print(f"  ✗ Warning: Empty audio generated for this segment")
             else:
-                print(f"  Warning: No audio generated for this segment")
+                print(f"  ✗ Warning: No audio generated for this segment")
 
         # Concatenate all audio segments
         if not all_audio_segments:
