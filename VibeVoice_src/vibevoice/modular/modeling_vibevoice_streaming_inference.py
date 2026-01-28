@@ -511,7 +511,6 @@ class VibeVoiceStreamingForConditionalGenerationInference(VibeVoiceStreamingPreT
 
         generation_config, model_kwargs = self._prepare_generation_config(
             generation_config, 
-            True, 
             speech_start_id=tokenizer.speech_start_id, 
             speech_end_id=tokenizer.speech_end_id, 
             speech_diffusion_id=tokenizer.speech_diffusion_id, 
@@ -675,11 +674,11 @@ class VibeVoiceStreamingForConditionalGenerationInference(VibeVoiceStreamingPreT
         negative_outputs = all_prefilled_outputs["neg_lm"]
         tts_lm_negative_outputs = all_prefilled_outputs["neg_tts_lm"]
 
-        model_kwargs = _update_model_kwargs_for_generation(
-            outputs, model_kwargs, num_new_tokens=first_text_window_size,
+        model_kwargs = self._update_model_kwargs_for_generation(
+            outputs, model_kwargs, num_new_tokens=first_text_window_size, is_encoder_decoder=False
         )
-        tts_lm_model_kwargs = _update_model_kwargs_for_generation(
-            tts_lm_outputs, tts_lm_model_kwargs, num_new_tokens=first_text_window_size,
+        tts_lm_model_kwargs = self._update_model_kwargs_for_generation(
+            tts_lm_outputs, tts_lm_model_kwargs, num_new_tokens=first_text_window_size, is_encoder_decoder=False
         )
         negative_model_kwargs = self._update_model_kwargs_for_generation(
             negative_outputs, negative_model_kwargs, is_encoder_decoder=False,
