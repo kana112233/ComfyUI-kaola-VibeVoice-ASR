@@ -14,6 +14,12 @@ if vibevoice_src_path not in sys.path:
 
 from vibevoice.modular.modeling_vibevoice_asr import VibeVoiceASRForConditionalGeneration
 from vibevoice.processor.vibevoice_asr_processor import VibeVoiceASRProcessor
+from vibevoice.modular.modeling_vibevoice import VibeVoiceForConditionalGeneration
+from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
+from vibevoice.modular.modeling_vibevoice_streaming_inference import VibeVoiceStreamingForConditionalGenerationInference
+from vibevoice.processor.vibevoice_streaming_processor import VibeVoiceStreamingProcessor
+import glob
+import copy
 
 class VibeVoiceLoader:
     @classmethod
@@ -42,6 +48,9 @@ class VibeVoiceLoader:
             search_paths = [
                 os.path.join(comfy_models_dir, model_name),
                 os.path.join(comfy_models_dir, "vibevoice", model_name),
+                # Check ../models (sibling of this repo) as a fallback for manual downloads
+                os.path.abspath(os.path.join(current_dir, "../models", model_name)),
+                os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_name)),
             ]
             
             # If model_name has a slash (e.g. microsoft/VibeVoice-ASR), try checking just the name (VibeVoice-ASR)
@@ -49,6 +58,8 @@ class VibeVoiceLoader:
                 model_basename = model_name.split("/")[-1]
                 search_paths.append(os.path.join(comfy_models_dir, model_basename))
                 search_paths.append(os.path.join(comfy_models_dir, "vibevoice", model_basename))
+                search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", model_basename)))
+                search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_basename)))
             
             for potential_path in search_paths:
                 if os.path.exists(potential_path):
@@ -269,14 +280,390 @@ class VibeVoiceShowText:
         print(f"####################\n[VibeVoiceShowText] Content:\n{text}\n####################")
         return {"ui": {"text": [text]}, "result": (text,)}
 
+class VibeVoiceTTSLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model_name": ("STRING", {"default": "microsoft/VibeVoice-1.5B"}),
+                "precision": (["fp16", "bf16", "fp32"], {"default": "bf16"}),
+                "device": (["cuda", "cpu", "mps", "auto"], {"default": "auto"}),
+            },
+        }
+
+    RETURN_TYPES = ("VIBEVOICE_TTS_MODEL",)
+    RETURN_NAMES = ("vibevoice_tts_model",)
+    FUNCTION = "load_model"
+    CATEGORY = "VibeVoice"
+
+    def load_model(self, model_name, precision, device):
+        print(f"Loading VibeVoice TTS model: {model_name}")
+        
+        # Path resolution logic (similar to ASR)
+        model_path = model_name
+        if not os.path.exists(model_path):
+             comfy_models_dir = folder_paths.models_dir
+             search_paths = [
+                 os.path.join(comfy_models_dir, model_name),
+                 os.path.join(comfy_models_dir, "vibevoice", model_name),
+                 os.path.abspath(os.path.join(current_dir, "../models", model_name)),
+                 os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_name)),
+             ]
+             if "/" in model_name:
+                 model_basename = model_name.split("/")[-1]
+                 search_paths.append(os.path.join(comfy_models_dir, model_basename))
+                 search_paths.append(os.path.join(comfy_models_dir, "vibevoice", model_basename))
+                 search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", model_basename)))
+                 search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_basename)))
+             
+             for potential_path in search_paths:
+                 if os.path.exists(potential_path):
+                     model_path = potential_path
+                     break
+        
+        if os.path.exists(model_path):
+             model_path = os.path.abspath(model_path)
+             print(f"Resolved model path to: {model_path}")
+        else:
+             print(f"Model path not found locally, assuming HuggingFace repo ID: {model_name}")
+             model_path = model_name
+
+        dtype = torch.float32
+        if precision == "bf16":
+            dtype = torch.bfloat16
+        elif precision == "fp16":
+            dtype = torch.float16
+
+        if device == "auto":
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
+
+        # MPS/CPU stability check
+        if device == "mps" or device == "cpu":
+             if precision != "fp32":
+                 print(f"Warning: forcing float32 for {device} device stability")
+                 dtype = torch.float32
+
+        # Load Processor
+        processor = VibeVoiceProcessor.from_pretrained(model_path)
+        
+        # Load Model
+        # Note: VibeVoiceForConditionalGeneration is for TTS
+        model = VibeVoiceForConditionalGeneration.from_pretrained(
+            model_path,
+            torch_dtype=dtype,
+            device_map=device if device != "cpu" else None,
+            trust_remote_code=True
+        )
+        
+        if device == "cpu":
+            model = model.to(device)
+
+        model.eval()
+        
+        return ({"model": model, "processor": processor, "device": device, "dtype": dtype},)
+
+class VibeVoiceTTSInference:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "vibevoice_tts_model": ("VIBEVOICE_TTS_MODEL",),
+                "text": ("STRING", {"multiline": True, "default": "Speaker 1: Hello world."}),
+                "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536}),
+                "temperature": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 1.0, "step": 0.1}),
+                "cfg_scale": ("FLOAT", {"default": 1.5, "min": 0.1, "max": 10.0, "step": 0.1}), # Classifier-Free Guidance
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            },
+            "optional": {
+                "reference_audio": ("AUDIO",), # Optional reference audio for speaker cloning/conditioning
+                "speaker_indices": ("STRING", {"default": "0", "placeholder": "Example: 0, 1 (Map to provided reference audios if list)"}), 
+            }
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    FUNCTION = "generate"
+    CATEGORY = "VibeVoice"
+
+    def generate(self, vibevoice_tts_model, text, max_new_tokens, temperature, cfg_scale, seed, reference_audio=None, speaker_indices="0"):
+        if seed is not None:
+             torch.manual_seed(seed)
+             if torch.cuda.is_available():
+                 torch.cuda.manual_seed_all(seed)
+        
+        model = vibevoice_tts_model["model"]
+        processor = vibevoice_tts_model["processor"]
+        device = vibevoice_tts_model["device"]
+        dtype = vibevoice_tts_model["dtype"]
+
+        # Handle reference audio
+        voice_samples = []
+        if reference_audio is not None:
+            waveform = reference_audio["waveform"]
+            # mix to mono
+            if waveform.dim() == 3:
+                waveform = waveform[0]
+            if waveform.shape[0] > 1:
+                waveform = torch.mean(waveform, dim=0, keepdim=True)
+            waveform_np = waveform.squeeze().cpu().numpy()
+            
+            # Resample if needed (Processor usually expects 24k or 16k depending on config)
+            # We'll use the processor's audio_processor sampling rate
+            target_sr = 24000
+            if hasattr(processor, "audio_processor") and hasattr(processor.audio_processor, "sampling_rate"):
+                target_sr = processor.audio_processor.sampling_rate
+            
+            input_sr = reference_audio["sample_rate"]
+            if input_sr != target_sr:
+                waveform_np = librosa.resample(waveform_np, orig_sr=input_sr, target_sr=target_sr)
+            
+            voice_samples.append(waveform_np)
+        
+        # Prepare inputs
+        inputs = processor(
+            text=text,
+            voice_samples=voice_samples if voice_samples else None,
+            return_tensors="pt",
+        )
+        
+        inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k,v in inputs.items()}
+        
+        # Generation config
+        generation_config = {
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "do_sample": temperature > 0,
+            "cfg_scale": cfg_scale, 
+        }
+
+        print(f"Generating TTS audio for text: {text[:50]}...")
+        
+        with torch.no_grad():
+            outputs = model.generate(
+                **inputs,
+                **generation_config,
+                tokenizer=processor.tokenizer, # Needed for some generation paths
+            )
+
+        # Extract audio
+        # outputs.speech_outputs is likely a list of waveforms
+        if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0:
+            generated_audio = outputs.speech_outputs[0].cpu().float()
+            
+            # Create ComfyUI audio output
+            # [batch, channels, samples] -> [1, 1, samples]
+            output_audio = generated_audio.unsqueeze(0).unsqueeze(0)
+            
+            return ({"waveform": output_audio, "sample_rate": 24000},) # VibeVoice default is 24k usually
+        else:
+            print("No audio generated.")
+            return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": 24000},)
+
+
+class VibeVoiceStreamingLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model_name": ("STRING", {"default": "microsoft/VibeVoice-Realtime-0.5B"}),
+                "device": (["cuda", "cpu", "mps", "auto"], {"default": "auto"}),
+            },
+        }
+
+    RETURN_TYPES = ("VIBEVOICE_STREAMING_MODEL",)
+    RETURN_NAMES = ("vibevoice_streaming_model",)
+    FUNCTION = "load_model"
+    CATEGORY = "VibeVoice"
+
+    def load_model(self, model_name, device):
+        print(f"Loading VibeVoice Streaming model: {model_name}")
+        
+        model_path = model_name
+        # Same path resolution
+        if not os.path.exists(model_path):
+             comfy_models_dir = folder_paths.models_dir
+             search_paths = [
+                 os.path.join(comfy_models_dir, model_name),
+                 os.path.join(comfy_models_dir, "vibevoice", model_name),
+                 os.path.abspath(os.path.join(current_dir, "../models", model_name)),
+                 os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_name)),
+             ]
+             if "/" in model_name:
+                 model_basename = model_name.split("/")[-1]
+                 search_paths.append(os.path.join(comfy_models_dir, model_basename))
+                 search_paths.append(os.path.join(comfy_models_dir, "vibevoice", model_basename))
+                 search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", model_basename)))
+                 search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_basename)))
+             for p in search_paths:
+                 if os.path.exists(p):
+                     model_path = p
+                     break
+        
+        if os.path.exists(model_path):
+             model_path = os.path.abspath(model_path)
+
+        if device == "auto":
+            if torch.cuda.is_available():
+                device = "cuda"
+            elif torch.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
+
+        # Dtype logic as per demo
+        attn_metrics = "sdpa"
+        if device == "cuda":
+            dtype = torch.bfloat16
+            attn_metrics = "flash_attention_2"
+        elif device == "mps":
+            dtype = torch.float32
+        else:
+            dtype = torch.float32
+
+        processor = VibeVoiceStreamingProcessor.from_pretrained(model_path)
+        
+        # Load Model
+        try:
+             model = VibeVoiceStreamingForConditionalGenerationInference.from_pretrained(
+                model_path,
+                torch_dtype=dtype,
+                device_map=device if device != "cpu" else None,
+                attn_implementation=attn_metrics,
+                trust_remote_code=True
+            )
+        except Exception as e:
+            print(f"Failed to load with {attn_metrics}, falling back to SDPA. Error: {e}")
+            model = VibeVoiceStreamingForConditionalGenerationInference.from_pretrained(
+                model_path,
+                torch_dtype=dtype,
+                device_map=device if device != "cpu" else None,
+                attn_implementation="sdpa",
+                trust_remote_code=True
+            )
+            
+        if device == "mps":
+            model = model.to("mps")
+            
+        model.eval()
+        model.set_ddpm_inference_steps(num_steps=5) # Default from demo
+
+        return ({"model": model, "processor": processor, "device": device, "dtype": dtype},)
+
+class VibeVoiceStreamingInference:
+    @classmethod
+    def INPUT_TYPES(s):
+        # Scan for presets
+        presets = ["Wayne"]
+        try:
+            voices_dir = os.path.join(current_dir, "VibeVoice_src", "demo", "voices", "streaming_model")
+            if os.path.exists(voices_dir):
+                files = glob.glob(os.path.join(voices_dir, "**", "*.pt"), recursive=True)
+                presets = sorted([os.path.splitext(os.path.basename(f))[0] for f in files])
+        except Exception as e:
+            print(f"Error scanning presets: {e}")
+
+        return {
+            "required": {
+                "vibevoice_streaming_model": ("VIBEVOICE_STREAMING_MODEL",),
+                "text": ("STRING", {"multiline": True, "default": "Hello, this is a real-time streaming test."}),
+                "speaker_name": (presets, {"default": presets[0] if presets else ""}),
+                "cfg_scale": ("FLOAT", {"default": 1.5, "min": 0.1, "max": 10.0, "step": 0.1}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            },
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    FUNCTION = "generate"
+    CATEGORY = "VibeVoice"
+
+    def generate(self, vibevoice_streaming_model, text, speaker_name, cfg_scale, seed):
+        if seed is not None:
+             torch.manual_seed(seed)
+             if torch.cuda.is_available():
+                 torch.cuda.manual_seed_all(seed)
+
+        model = vibevoice_streaming_model["model"]
+        processor = vibevoice_streaming_model["processor"]
+        device = vibevoice_streaming_model["device"]
+        
+        # Load preset directly
+        voice_path = None
+        voices_dir = os.path.join(current_dir, "VibeVoice_src", "demo", "voices", "streaming_model")
+        # Find the file matching speaker_name
+        if os.path.exists(voices_dir):
+            files = glob.glob(os.path.join(voices_dir, "**", "*.pt"), recursive=True)
+            for f in files:
+                if os.path.splitext(os.path.basename(f))[0] == speaker_name:
+                    voice_path = f
+                    break
+        
+        if not voice_path or not os.path.exists(voice_path):
+             print(f"Warning: Preset {speaker_name} not found. Trying to find any pt file.")
+             if files:
+                 voice_path = files[0]
+                 print(f"Using fallback: {voice_path}")
+             else:
+                 raise ValueError(f"No voice preset found for {speaker_name} and no fallbacks available.")
+
+        print(f"Loading voice preset from {voice_path}")
+        target_device = device if device != "cpu" else "cpu"
+        all_prefilled_outputs = torch.load(voice_path, map_location=target_device, weights_only=False)
+
+        # Process inputs
+        full_script = text.replace("’", "'").replace('“', '"').replace('”', '"')
+        
+        inputs = processor.process_input_with_cached_prompt(
+            text=full_script,
+            cached_prompt=all_prefilled_outputs,
+            padding=True,
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
+
+        inputs = {k: v.to(target_device) if isinstance(v, torch.Tensor) else v for k,v in inputs.items()}
+        
+        print(f"Generating Streaming Audio for: {text[:50]}...")
+        with torch.no_grad():
+             outputs = model.generate(
+                **inputs,
+                max_new_tokens=None,
+                cfg_scale=cfg_scale,
+                tokenizer=processor.tokenizer,
+                generation_config={'do_sample': False},
+                # verbose=True,
+                all_prefilled_outputs=copy.deepcopy(all_prefilled_outputs)
+            )
+            
+        if outputs.speech_outputs and outputs.speech_outputs[0] is not None:
+             # Streaming model usually outputs 24kHz too
+             audio_tensor = outputs.speech_outputs[0] # [samples]
+             output_audio = audio_tensor.unsqueeze(0).unsqueeze(0).cpu().float()
+             return ({"waveform": output_audio, "sample_rate": 24000},)
+        else:
+             return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": 24000},)
+
 NODE_CLASS_MAPPINGS = {
     "VibeVoiceLoader": VibeVoiceLoader,
     "VibeVoiceTranscribe": VibeVoiceTranscribe,
     "VibeVoiceShowText": VibeVoiceShowText,
+    "VibeVoiceTTSLoader": VibeVoiceTTSLoader,
+    "VibeVoiceTTSInference": VibeVoiceTTSInference,
+    "VibeVoiceStreamingLoader": VibeVoiceStreamingLoader,
+    "VibeVoiceStreamingInference": VibeVoiceStreamingInference,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "VibeVoiceLoader": "VibeVoice Model Loader",
-    "VibeVoiceTranscribe": "VibeVoice Transcribe",
+    "VibeVoiceLoader": "VibeVoice Model Loader (ASR)",
+    "VibeVoiceTranscribe": "VibeVoice Transcribe (ASR)",
     "VibeVoiceShowText": "VibeVoice Show String",
+    "VibeVoiceTTSLoader": "VibeVoice TTS Model Loader",
+    "VibeVoiceTTSInference": "VibeVoice TTS Inference",
+    "VibeVoiceStreamingLoader": "VibeVoice Streaming Model Loader",
+    "VibeVoiceStreamingInference": "VibeVoice Streaming Inference",
 }
