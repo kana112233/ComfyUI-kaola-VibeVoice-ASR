@@ -21,6 +21,73 @@ from vibevoice.processor.vibevoice_streaming_processor import VibeVoiceStreaming
 import glob
 import copy
 
+# VoiceMapper class used in demo
+class VoiceMapper:
+    """Maps speaker names to voice file paths"""
+    
+    def __init__(self):
+        self.setup_voice_presets()
+
+    def setup_voice_presets(self):
+        """Setup voice presets by scanning the voices directory."""
+        # Adjust path to relative to this file
+        voices_dir = os.path.join(current_dir, "VibeVoice_src/demo/voices/streaming_model")
+        
+        # Check if voices directory exists
+        if not os.path.exists(voices_dir):
+            print(f"Warning: Voices directory not found at {voices_dir}")
+            self.voice_presets = {}
+            self.available_voices = {}
+            return
+        
+        # Scan for all VOICE files in the voices directory
+        self.voice_presets = {}
+        
+        # Get all .pt files in the voices directory
+        pt_files = glob.glob(os.path.join(voices_dir, "**", "*.pt"), recursive=True)
+        
+        # Create dictionary with filename (without extension) as key
+        for pt_file in pt_files:
+            # key: filename without extension
+            name = os.path.splitext(os.path.basename(pt_file))[0] # Keep case for display? Demo lowers it.
+            # Demo logic:
+            # name = os.path.splitext(os.path.basename(pt_file))[0].lower()
+            # But let's keep original casing for UI and match case-insensitive
+            full_path = os.path.abspath(pt_file)
+            self.voice_presets[name] = full_path
+        
+        self.voice_presets = dict(sorted(self.voice_presets.items()))
+
+    def get_voice_path(self, speaker_name: str) -> str:
+        """Get voice file path for a given speaker name"""
+        # First try exact match
+        if speaker_name in self.voice_presets:
+            return self.voice_presets[speaker_name]
+        
+        # Try case-insensitive
+        speaker_name_lower = speaker_name.lower()
+        for name, path in self.voice_presets.items():
+            if name.lower() == speaker_name_lower:
+                 return path
+        
+        # Try partial matching (case insensitive)
+        matched_path = None
+        for preset_name, path in self.voice_presets.items():
+            if preset_name.lower() in speaker_name_lower or speaker_name_lower in preset_name.lower():
+                if matched_path is not None:
+                     # Ambiguous, but let's just pick one
+                     pass 
+                matched_path = path
+        if matched_path is not None:
+            return matched_path
+        
+        # Default to first voice if no match found
+        if self.voice_presets:
+             default_voice = list(self.voice_presets.values())[0]
+             print(f"Warning: No voice preset found for '{speaker_name}', using default voice: {default_voice}")
+             return default_voice
+        return None
+
 class VibeVoiceLoader:
     @classmethod
     def INPUT_TYPES(s):
@@ -552,7 +619,8 @@ class VibeVoiceStreamingLoader:
                 torch_dtype=dtype,
                 device_map=device if device != "cpu" else None,
                 attn_implementation=attn_metrics,
-                trust_remote_code=True
+                trust_remote_code=True,
+                low_cpu_mem_usage=False # Prevent meta tensor issues on CPU
             )
         except Exception as e:
             print(f"Failed to load with {attn_metrics}, falling back to SDPA. Error: {e}")
@@ -561,7 +629,8 @@ class VibeVoiceStreamingLoader:
                 torch_dtype=dtype,
                 device_map=device if device != "cpu" else None,
                 attn_implementation="sdpa",
-                trust_remote_code=True
+                trust_remote_code=True,
+                low_cpu_mem_usage=False # Prevent meta tensor issues on CPU
             )
             
         if device == "mps":
@@ -598,6 +667,87 @@ class VibeVoiceStreamingInference:
     RETURN_TYPES = ("AUDIO",)
     RETURN_NAMES = ("audio",)
     FUNCTION = "generate"
+    CATEGORY = "VibeVoice"
+
+    def generate(self, vibevoice_streaming_model, text, speaker_name, cfg_scale, seed):
+        if seed is not None:
+             torch.manual_seed(seed)
+             if torch.cuda.is_available():
+                 torch.cuda.manual_seed_all(seed)
+        
+        model = vibevoice_streaming_model["model"]
+        processor = vibevoice_streaming_model["processor"]
+        device = vibevoice_streaming_model["device"]
+        # dtype = vibevoice_streaming_model["dtype"]
+
+        print(f"Generating Streaming TTS for: '{text}' with speaker '{speaker_name}'")
+
+        # 1. initialize voice mapper
+        voice_mapper = VoiceMapper()
+        voice_path = voice_mapper.get_voice_path(speaker_name)
+        
+        if not voice_path or not os.path.exists(voice_path):
+             raise ValueError(f"Voice preset not found for: {speaker_name}")
+
+        print(f"Using voice preset: {voice_path}")
+        
+        # 2. Load cached prompt
+        target_device = device if device != "cpu" else "cpu"
+        all_prefilled_outputs = torch.load(voice_path, map_location=target_device, weights_only=False)
+
+        # 3. Process Input
+        full_script = text.replace("’", "'").replace('“', '"').replace('”', '"')
+        
+        inputs = processor.process_input_with_cached_prompt(
+            text=full_script,
+            cached_prompt=all_prefilled_outputs,
+            padding=True,
+            return_tensors="pt",
+            return_attention_mask=True,
+        )
+
+        # Move to device
+        for k, v in inputs.items():
+            if torch.is_tensor(v):
+                inputs[k] = v.to(target_device)
+
+        # 4. Generate
+        print(f"Starting generation with cfg_scale: {cfg_scale}")
+        
+        # Ensure deepcopy if needed, similar to demo
+        import copy
+        prefilled_copy = copy.deepcopy(all_prefilled_outputs) if all_prefilled_outputs is not None else None
+
+        with torch.no_grad():
+             outputs = model.generate(
+                 **inputs,
+                 max_new_tokens=None, # handled by generate logic internally or default
+                 cfg_scale=cfg_scale,
+                 tokenizer=processor.tokenizer,
+                 generation_config={'do_sample': False},
+                 verbose=True,
+                 all_prefilled_outputs=prefilled_copy,
+             )
+
+        # 5. Extract audio
+        if outputs.speech_outputs and outputs.speech_outputs[0] is not None:
+            # Output is [1, Length] usually (mono)
+            generated_audio = outputs.speech_outputs[0].cpu().float()
+            
+            # ComfyUI expects [batch, channels, samples] or [batch, samples, channels]?
+            # Actually standard AUDIO type is {"waveform": tensor[batch, channels, samples], "sample_rate": int}
+            
+            # generated_audio is [Length] or [1, Length]
+            if generated_audio.dim() == 1:
+                generated_audio = generated_audio.unsqueeze(0) # [1, Length]
+            
+            # Add batch dim -> [1, 1, Length]
+            waveform = generated_audio.unsqueeze(0)
+            
+            return ({"waveform": waveform, "sample_rate": 24000},) 
+        else:
+            print("No audio output generated")
+            return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": 24000},)
     CATEGORY = "VibeVoice"
 
     def generate(self, vibevoice_streaming_model, text, speaker_name, cfg_scale, seed):
