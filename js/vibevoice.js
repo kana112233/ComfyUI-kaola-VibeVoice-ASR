@@ -54,16 +54,21 @@ app.registerExtension({
                     const url = `/view?filename=${encodeURIComponent(filename)}&type=${type}&subfolder=${encodeURIComponent(subfolder)}`;
 
                     // Add or update button
-                    const buttonName = "Open File";
-                    let widget = this.widgets?.find((w) => w.name === buttonName || w.name.startsWith("Open "));
+                    const buttonName = "Download File";
+                    let widget = this.widgets?.find((w) => w.name === buttonName || w.name.startsWith("Download ") || w.name.startsWith("Open "));
 
                     if (!widget) {
                         widget = this.addWidget("button", buttonName, null, () => { });
                     }
 
-                    widget.name = "Open " + filename;
+                    widget.name = "Download " + filename;
                     widget.callback = () => {
-                        window.open(url, '_blank');
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
                     };
 
                     this.setDirtyCanvas(true, true);
