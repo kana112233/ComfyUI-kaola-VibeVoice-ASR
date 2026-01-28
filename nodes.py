@@ -613,9 +613,16 @@ class VibeVoiceTTSInferenceMultiSpeaker:
         dtype = vibevoice_tts_model["dtype"]
 
         # Handle multiple reference audios
-        voice_samples = []
+        # IMPORTANT: voice_samples index must match speaker_id (Speaker 0 -> index 0, Speaker 1 -> index 1, etc.)
         speaker_audios = [speaker_0_audio, speaker_1_audio, speaker_2_audio, speaker_3_audio]
 
+        # Determine target sample rate first
+        target_sr = 24000
+        if hasattr(processor, "audio_processor") and hasattr(processor.audio_processor, "sampling_rate"):
+            target_sr = processor.audio_processor.sampling_rate
+
+        # Process each speaker's audio, maintaining index correspondence
+        voice_samples = []
         for idx, ref_audio in enumerate(speaker_audios):
             if ref_audio is not None:
                 waveform = ref_audio["waveform"]
@@ -627,16 +634,19 @@ class VibeVoiceTTSInferenceMultiSpeaker:
                 waveform_np = waveform.squeeze().cpu().numpy()
 
                 # Resample if needed
-                target_sr = 24000
-                if hasattr(processor, "audio_processor") and hasattr(processor.audio_processor, "sampling_rate"):
-                    target_sr = processor.audio_processor.sampling_rate
-
                 input_sr = ref_audio["sample_rate"]
                 if input_sr != target_sr:
                     waveform_np = librosa.resample(waveform_np, orig_sr=input_sr, target_sr=target_sr)
 
                 voice_samples.append(waveform_np)
-                print(f"Added reference audio for Speaker {idx}: {len(waveform_np)} samples at {target_sr}Hz")
+                print(f"✓ Speaker {idx}: Using reference audio ({len(waveform_np)} samples at {target_sr}Hz)")
+            else:
+                # Create a very short silence placeholder to maintain index correspondence
+                # This ensures voice_samples[i] corresponds to Speaker i
+                # Using minimal silence (10ms) to avoid affecting model's voice generation
+                silence = np.zeros(int(target_sr * 0.01), dtype=np.float32)  # 10ms silence placeholder
+                voice_samples.append(silence)
+                print(f"○ Speaker {idx}: Using default voice (no reference audio provided)")
 
         # Auto-format text if needed
         import re
@@ -644,7 +654,14 @@ class VibeVoiceTTSInferenceMultiSpeaker:
              print(f"Auto-formatting text to 'Speaker 0: {text[:20]}...'")
              text = f"Speaker 0: {text}"
 
-        print(f"Generating TTS with {len(voice_samples)} reference audio(s)")
+        # Count actual reference audios (non-placeholder)
+        actual_ref_count = sum(1 for i, audio in enumerate(speaker_audios) if audio is not None)
+        print(f"\n{'='*60}")
+        print(f"TTS Generation Summary:")
+        print(f"  Total speakers configured: {len(voice_samples)}")
+        print(f"  Speakers with reference audio: {actual_ref_count}")
+        print(f"  Speakers using default voice: {len(voice_samples) - actual_ref_count}")
+        print(f"{'='*60}\n")
 
         # Prepare inputs
         inputs = processor(
