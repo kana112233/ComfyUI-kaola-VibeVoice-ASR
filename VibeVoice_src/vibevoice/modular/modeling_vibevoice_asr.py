@@ -302,7 +302,6 @@ class VibeVoiceASRForConditionalGeneration(VibeVoiceASRPreTrainedModel, Generati
                         cache=acoustic_encoder_cache,
                         sample_indices=sample_indices,
                         use_cache=True,
-                        is_final_chunk=is_final,
                     )
                     acoustic_mean_segments.append(acoustic_encoder_output.mean)
                     
@@ -312,7 +311,6 @@ class VibeVoiceASRForConditionalGeneration(VibeVoiceASRPreTrainedModel, Generati
                         cache=semantic_encoder_cache,
                         sample_indices=sample_indices,
                         use_cache=True,
-                        is_final_chunk=is_final,
                     )
                     semantic_mean_segments.append(semantic_encoder_output.mean)
                 
