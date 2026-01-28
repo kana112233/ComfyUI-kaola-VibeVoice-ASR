@@ -720,27 +720,13 @@ class VibeVoiceTTSInferenceMultiSpeaker:
                     tokenizer=processor.tokenizer,
                 )
 
-            # Extract audio - DEBUG
-            print(f"  DEBUG: outputs type: {type(outputs)}")
-            print(f"  DEBUG: has speech_outputs: {hasattr(outputs, 'speech_outputs')}")
-
-            if hasattr(outputs, "speech_outputs"):
-                print(f"  DEBUG: speech_outputs type: {type(outputs.speech_outputs)}")
-                print(f"  DEBUG: speech_outputs length: {len(outputs.speech_outputs) if outputs.speech_outputs else 0}")
-                if outputs.speech_outputs and len(outputs.speech_outputs) > 0:
-                    print(f"  DEBUG: speech_outputs[0] shape: {outputs.speech_outputs[0].shape if outputs.speech_outputs[0] is not None else 'None'}")
-
             # Extract audio
             if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0 and outputs.speech_outputs[0] is not None:
                 segment_audio = outputs.speech_outputs[0].cpu().float()
 
-                print(f"  DEBUG: Raw segment_audio shape: {segment_audio.shape}, numel: {segment_audio.numel()}")
-
                 # Ensure 1D tensor: squeeze all extra dimensions
                 while segment_audio.dim() > 1:
                     segment_audio = segment_audio.squeeze(0)
-
-                print(f"  DEBUG: After squeeze: {segment_audio.shape}")
 
                 # Verify we got valid audio
                 if segment_audio.numel() > 0:
