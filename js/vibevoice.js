@@ -39,5 +39,36 @@ app.registerExtension({
                 }
             };
         }
+
+        if (nodeData.name === "VibeVoiceSaveFile") {
+            const onExecuted = nodeType.prototype.onExecuted;
+            nodeType.prototype.onExecuted = function (message) {
+                onExecuted?.apply(this, arguments);
+
+                if (message && message.file_info && message.file_info.length > 0) {
+                    const file_info = message.file_info[0];
+                    const filename = file_info.filename;
+                    const subfolder = file_info.subfolder || "";
+                    const type = file_info.type || "output";
+
+                    const url = `/view?filename=${encodeURIComponent(filename)}&type=${type}&subfolder=${encodeURIComponent(subfolder)}`;
+
+                    // Add or update button
+                    const buttonName = "Open File";
+                    let widget = this.widgets?.find((w) => w.name === buttonName || w.name.startsWith("Open "));
+
+                    if (!widget) {
+                        widget = this.addWidget("button", buttonName, null, () => { });
+                    }
+
+                    widget.name = "Open " + filename;
+                    widget.callback = () => {
+                        window.open(url, '_blank');
+                    };
+
+                    this.setDirtyCanvas(true, true);
+                }
+            };
+        }
     },
 });

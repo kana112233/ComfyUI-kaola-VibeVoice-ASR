@@ -1076,11 +1076,21 @@ class VibeVoiceSaveFile:
         filename = f"{base_prefix}_{timestamp}.{file_extension}"
         file_path = os.path.join(full_output_dir, filename)
         
-        with open(file_path, "w", encoding="utf-8") as f:
+        with open(file_path, "w", encoding="utf-8-sig") as f:
             f.write(text)
             
         print(f"Saved text to: {file_path}")
-        return {"ui": {"text": [f"Saved to: {file_path}"]}, "result": (file_path,)}
+        return {
+            "ui": {
+                "text": [f"Saved to: {file_path}"],
+                "file_info": [{
+                    "filename": filename,
+                    "subfolder": subfolder if "/" in filename_prefix or "\\" in filename_prefix else "",
+                    "type": "output"
+                }]
+            }, 
+            "result": (file_path,)
+        }
 
 NODE_CLASS_MAPPINGS = {
     "VibeVoiceLoader": VibeVoiceLoader,
