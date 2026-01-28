@@ -452,12 +452,21 @@ class VibeVoiceTTSInference:
 
         print(f"Generating TTS audio for text: {text[:50]}...")
         
+        # Check if the model has a generate method
+        if not hasattr(model, "generate"):
+             error_msg = (
+                 "❌ ERROR: This VibeVoice-1.5B model does not have a 'generate' method.\n"
+                 "The official VibeVoice repository has removed the inference code for the 1.5B TTS model due to policy reasons.\n"
+                 "Please use the 'VibeVoice Streaming' nodes (VibeVoiceStreamingLoader / Inference) with the 'VibeVoice-Realtime-0.5B' model instead, which is fully supported."
+             )
+             raise NotImplementedError(error_msg)
+
         with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                **generation_config,
-                tokenizer=processor.tokenizer, # Needed for some generation paths
-            )
+             outputs = model.generate(
+                 **inputs,
+                 **generation_config,
+                 tokenizer=processor.tokenizer, # Needed for some generation paths
+             )
 
         # Extract audio
         # outputs.speech_outputs is likely a list of waveforms
