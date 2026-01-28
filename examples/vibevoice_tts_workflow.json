@@ -1,4 +1,3 @@
-
 {
     "last_node_id": 4,
     "last_link_id": 2,
@@ -7,7 +6,7 @@
             "id": 1,
             "type": "VibeVoiceTTSLoader",
             "pos": [100, 100],
-            "size": [315, 106],
+            "size": [350, 110],
             "flags": {},
             "order": 0,
             "mode": 0,
@@ -28,13 +27,15 @@
                 "microsoft/VibeVoice-1.5B",
                 "bf16",
                 "auto"
-            ]
+            ],
+            "color": "#2a363b",
+            "bgcolor": "#3f5159"
         },
         {
             "id": 2,
             "type": "VibeVoiceTTSInference",
-            "pos": [450, 100],
-            "size": [400, 250],
+            "pos": [500, 100],
+            "size": [420, 280],
             "flags": {},
             "order": 1,
             "mode": 0,
@@ -64,19 +65,21 @@
                 "Node name for S&R": "VibeVoiceTTSInference"
             },
             "widgets_values": [
-                "Hello, this is a test of VibeVoice TTS system.",
+                "Speaker 0: Hello! This is a demonstration of VibeVoice text-to-speech system. Speaker 1: It supports multiple speakers and high-quality voice synthesis.",
                 4096,
                 0.7,
                 1.5,
                 0,
                 "0"
-            ]
+            ],
+            "color": "#233",
+            "bgcolor": "#355"
         },
         {
             "id": 3,
             "type": "SaveAudio",
-            "pos": [900, 100],
-            "size": [300, 100],
+            "pos": [970, 100],
+            "size": [320, 100],
             "flags": {},
             "order": 2,
             "mode": 0,
@@ -93,7 +96,26 @@
             },
             "widgets_values": [
                 "vibevoice_tts_output"
-            ]
+            ],
+            "color": "#323",
+            "bgcolor": "#535"
+        },
+        {
+            "id": 4,
+            "type": "Note",
+            "pos": [100, 250],
+            "size": [810, 180],
+            "flags": {},
+            "order": 3,
+            "mode": 0,
+            "properties": {
+                "text": ""
+            },
+            "widgets_values": [
+                "VibeVoice TTS Workflow - 使用说明 / Usage Guide:\n\n1. Model Loader 模型加载:\n   - model_name: 模型路径或HuggingFace ID（默认自动下载）\n   - precision: bf16(推荐CUDA) / fp16(推荐MPS/兼容性) / fp32(CPU)\n   - device: auto(自动检测) / cuda / mps / cpu\n\n2. TTS Inference 文本转语音:\n   - text: 使用 'Speaker 0: 文本' 格式，支持多说话人 'Speaker 1: ...'\n   - max_new_tokens: 最大生成token数（4096推荐）\n   - temperature: 生成随机性 (0=确定性, 0.7=平衡, 1.0=创造性)\n   - cfg_scale: 引导强度 (1.5推荐, 更高=更贴近文本)\n   - seed: 随机种子（0=随机，固定值=可复现结果）\n   - speaker_indices: 说话人索引映射 (默认\"0\")\n   - reference_audio (可选): 连接LoadAudio节点实现声音克隆\n\n3. Save Audio 保存音频:\n   - 自动保存到 ComfyUI/output/ 目录\n   - 格式: vibevoice_tts_output_[数字].wav"
+            ],
+            "color": "#432",
+            "bgcolor": "#653"
         }
     ],
     "links": [
