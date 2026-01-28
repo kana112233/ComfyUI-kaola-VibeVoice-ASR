@@ -424,6 +424,13 @@ class VibeVoiceTTSInference:
             
             voice_samples.append(waveform_np)
         
+        # Auto-format text to meet processor requirements if needed
+        # Processor expects: "Speaker N: Text"
+        import re
+        if not re.match(r"Speaker\s+\d+\s*:", text, re.IGNORECASE):
+             print(f"Details: Text auto-formatted to 'Speaker 0: {text[:20]}...'")
+             text = f"Speaker 0: {text}"
+
         # Prepare inputs
         inputs = processor(
             text=text,
@@ -440,6 +447,8 @@ class VibeVoiceTTSInference:
             "do_sample": temperature > 0,
             "cfg_scale": cfg_scale, 
         }
+
+
 
         print(f"Generating TTS audio for text: {text[:50]}...")
         
