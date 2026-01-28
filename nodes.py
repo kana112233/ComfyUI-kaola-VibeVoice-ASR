@@ -612,70 +612,44 @@ class VibeVoiceTTSInferenceMultiSpeaker:
         device = vibevoice_tts_model["device"]
         dtype = vibevoice_tts_model["dtype"]
 
-        # Auto-format text if needed first (before parsing)
-        import re
-        if not re.match(r"Speaker\s+\d+\s*:", text, re.IGNORECASE):
-             print(f"Auto-formatting text to 'Speaker 0: {text[:20]}...'")
-             text = f"Speaker 0: {text}"
-
-        # Parse text to extract speaker IDs that are actually used
-        lines = text.strip().split("\n")
-        parsed_speakers = []
-        for line in lines:
-            match = re.match(r"Speaker\s+(\d+)\s*:", line.strip(), re.IGNORECASE)
-            if match:
-                speaker_id = int(match.group(1))
-                parsed_speakers.append(speaker_id)
-
-        if not parsed_speakers:
-            raise ValueError("No valid speaker lines found in text")
-
-        # Get unique original speaker IDs
-        unique_original_speakers = sorted(set(parsed_speakers))
-
-        # CRITICAL FIX: Remap speakers to be CONSECUTIVE starting from 0
-        # This fixes the processor's enumerate vs speaker_id mismatch
-        # Original: Speaker 1, Speaker 3 -> Remap to: Speaker 0, Speaker 1
-        speaker_remap = {original_id: new_id for new_id, original_id in enumerate(unique_original_speakers)}
-
-        print(f"\nOriginal speakers in text: {unique_original_speakers}")
-        print(f"Remapping to consecutive IDs: {speaker_remap}")
-
-        # Rewrite text with consecutive speaker IDs
-        new_lines = []
-        for line in lines:
-            match = re.match(r"(Speaker\s+)(\d+)(\s*:.*)$", line.strip(), re.IGNORECASE)
-            if match:
-                prefix, old_id, suffix = match.groups()
-                old_id_int = int(old_id)
-                new_id = speaker_remap[old_id_int]
-                new_line = f"{prefix}{new_id}{suffix}"
-                new_lines.append(new_line)
-            elif line.strip():
-                new_lines.append(line)
-
-        text = "\n".join(new_lines)
-        print(f"Rewritten text with consecutive IDs:\n{text}\n")
-
         # Map input audios by speaker ID
         speaker_audios = [speaker_0_audio, speaker_1_audio, speaker_2_audio, speaker_3_audio]
+
+        # Parse text to extract speaker segments
+        import re
+        lines = text.strip().split("\n")
+        segments = []  # List of (speaker_id, text_content)
+
+        for line in lines:
+            if not line.strip():
+                continue
+            match = re.match(r"Speaker\s+(\d+)\s*:\s*(.+)$", line.strip(), re.IGNORECASE)
+            if match:
+                speaker_id = int(match.group(1))
+                text_content = match.group(2).strip()
+                segments.append((speaker_id, text_content))
+            else:
+                # No speaker prefix, treat as Speaker 0
+                segments.append((0, line.strip()))
+
+        if not segments:
+            raise ValueError("No valid text segments found")
+
+        print(f"\n{'='*60}")
+        print(f"Multi-Speaker TTS - Separate Generation Mode")
+        print(f"Total segments: {len(segments)}")
+        print(f"{'='*60}\n")
 
         # Determine target sample rate
         target_sr = 24000
         if hasattr(processor, "audio_processor") and hasattr(processor.audio_processor, "sampling_rate"):
             target_sr = processor.audio_processor.sampling_rate
 
-        # Build voice_samples array according to the remapped speaker order
-        # Text now uses consecutive IDs (0, 1, 2...), so voice_samples[i] should correspond to original speaker unique_original_speakers[i]
-        voice_samples = []
-        actual_ref_count = 0
-
-        for new_id, original_id in enumerate(unique_original_speakers):
-            # Get the reference audio for the ORIGINAL speaker ID
-            ref_audio = speaker_audios[original_id] if original_id < len(speaker_audios) else None
-
-            if ref_audio is not None:
-                waveform = ref_audio["waveform"]
+        # Process reference audios
+        processed_audios = {}
+        for idx in range(len(speaker_audios)):
+            if speaker_audios[idx] is not None:
+                waveform = speaker_audios[idx]["waveform"]
                 # mix to mono
                 if waveform.dim() == 3:
                     waveform = waveform[0]
@@ -684,63 +658,90 @@ class VibeVoiceTTSInferenceMultiSpeaker:
                 waveform_np = waveform.squeeze().cpu().numpy()
 
                 # Resample if needed
-                input_sr = ref_audio["sample_rate"]
+                input_sr = speaker_audios[idx]["sample_rate"]
                 if input_sr != target_sr:
                     waveform_np = librosa.resample(waveform_np, orig_sr=input_sr, target_sr=target_sr)
 
-                voice_samples.append(waveform_np)
-                actual_ref_count += 1
-                print(f"✓ Remapped Speaker {new_id} (orig Speaker {original_id}): Using reference audio ({len(waveform_np)} samples at {target_sr}Hz)")
-            else:
-                # No reference audio provided, use minimal silence
-                silence = np.zeros(int(target_sr * 0.01), dtype=np.float32)  # 10ms silence
-                voice_samples.append(silence)
-                print(f"○ Remapped Speaker {new_id} (orig Speaker {original_id}): Using default voice")
+                processed_audios[idx] = waveform_np
+                print(f"✓ Speaker {idx}: Reference audio loaded ({len(waveform_np)} samples)")
 
-        # Summary
+        # Generate audio for each segment separately
+        all_audio_segments = []
+
+        for seg_idx, (speaker_id, text_content) in enumerate(segments):
+            print(f"\n[Segment {seg_idx + 1}/{len(segments)}] Speaker {speaker_id}: {text_content[:50]}...")
+
+            # Prepare single-speaker text with Speaker 0 format (for consistent processing)
+            single_speaker_text = f"Speaker 0: {text_content}"
+
+            # Get reference audio for this speaker
+            voice_samples = None
+            if speaker_id in processed_audios:
+                voice_samples = [processed_audios[speaker_id]]
+                print(f"  Using reference audio for Speaker {speaker_id}")
+            else:
+                print(f"  Using default voice (no reference audio for Speaker {speaker_id})")
+
+            # Prepare inputs
+            inputs = processor(
+                text=single_speaker_text,
+                voice_samples=voice_samples,
+                return_tensors="pt",
+            )
+
+            inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k,v in inputs.items()}
+
+            # Generation config
+            generation_config = {
+                "max_new_tokens": max_new_tokens,
+                "temperature": temperature,
+                "do_sample": temperature > 0,
+                "cfg_scale": cfg_scale,
+            }
+
+            # Generate audio for this segment
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    **generation_config,
+                    tokenizer=processor.tokenizer,
+                )
+
+            # Extract audio
+            if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0 and outputs.speech_outputs[0] is not None:
+                segment_audio = outputs.speech_outputs[0].cpu().float()
+                all_audio_segments.append(segment_audio)
+                print(f"  Generated {len(segment_audio)} samples")
+            else:
+                print(f"  Warning: No audio generated for this segment")
+
+        # Concatenate all audio segments
+        if not all_audio_segments:
+            print("\nError: No audio segments were generated")
+            return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": target_sr},)
+
+        # Add short silence between segments (100ms)
+        silence_duration = int(target_sr * 0.1)
+        silence = torch.zeros(silence_duration)
+
+        final_audio_parts = []
+        for i, segment in enumerate(all_audio_segments):
+            final_audio_parts.append(segment)
+            # Add silence between segments (but not after the last one)
+            if i < len(all_audio_segments) - 1:
+                final_audio_parts.append(silence)
+
+        final_audio = torch.cat(final_audio_parts, dim=0)
+
         print(f"\n{'='*60}")
-        print(f"TTS Generation Summary:")
-        print(f"  Original speaker IDs in input: {unique_original_speakers}")
-        print(f"  Remapped to consecutive IDs: {list(range(len(unique_original_speakers)))}")
-        print(f"  Total speakers: {len(voice_samples)}")
-        print(f"  With reference audio: {actual_ref_count}")
-        print(f"  Using default voice: {len(voice_samples) - actual_ref_count}")
+        print(f"Generation Complete:")
+        print(f"  Total segments: {len(all_audio_segments)}")
+        print(f"  Final audio length: {len(final_audio)} samples ({len(final_audio)/target_sr:.2f}s)")
         print(f"{'='*60}\n")
 
-        # Prepare inputs
-        inputs = processor(
-            text=text,
-            voice_samples=voice_samples if voice_samples else None,
-            return_tensors="pt",
-        )
-
-        inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k,v in inputs.items()}
-
-        # Generation config
-        generation_config = {
-            "max_new_tokens": max_new_tokens,
-            "temperature": temperature,
-            "do_sample": temperature > 0,
-            "cfg_scale": cfg_scale,
-        }
-
-        print(f"Generating TTS audio for: {text[:80]}...")
-
-        with torch.no_grad():
-             outputs = model.generate(
-                 **inputs,
-                 **generation_config,
-                 tokenizer=processor.tokenizer,
-             )
-
-        # Extract audio
-        if hasattr(outputs, "speech_outputs") and outputs.speech_outputs and len(outputs.speech_outputs) > 0 and outputs.speech_outputs[0] is not None:
-            generated_audio = outputs.speech_outputs[0].cpu().float()
-            output_audio = generated_audio.unsqueeze(0).unsqueeze(0)
-            return ({"waveform": output_audio, "sample_rate": 24000},)
-        else:
-            print("No audio generated.")
-            return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": 24000},)
+        # Format for ComfyUI: [batch, channels, samples]
+        output_audio = final_audio.unsqueeze(0).unsqueeze(0)
+        return ({"waveform": output_audio, "sample_rate": target_sr},)
 
 
 class VibeVoiceStreamingLoader:
