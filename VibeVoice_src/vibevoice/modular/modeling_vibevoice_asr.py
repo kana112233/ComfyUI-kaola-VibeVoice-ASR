@@ -331,6 +331,21 @@ class VibeVoiceASRForConditionalGeneration(VibeVoiceASRPreTrainedModel, Generati
                 semantic_features = self.model.semantic_connector(semantic_tokens)
             
             # Combine acoustic and semantic features
+            # [FIX] Align shapes to avoid off-by-one errors (e.g. mask 46, features 47)
+            min_len = acoustic_features.shape[1]
+            if speech_masks is not None:
+                min_len = min(min_len, speech_masks.shape[1])
+            if semantic_features is not None:
+                min_len = min(min_len, semantic_features.shape[1])
+            
+            # Trim if necessary
+            if acoustic_features.shape[1] > min_len:
+                acoustic_features = acoustic_features[:, :min_len]
+            if semantic_features is not None and semantic_features.shape[1] > min_len:
+                semantic_features = semantic_features[:, :min_len]
+            if speech_masks is not None and speech_masks.shape[1] > min_len:
+                speech_masks = speech_masks[:, :min_len]
+
             if speech_masks is not None:
                 combined_features = acoustic_features[speech_masks] + semantic_features[speech_masks]
             else:
