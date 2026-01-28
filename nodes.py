@@ -1034,10 +1034,59 @@ class VibeVoiceStreamingInference:
         else:
              return ({"waveform": torch.zeros(1, 1, 1), "sample_rate": 24000},)
 
+class VibeVoiceSaveFile:
+    def __init__(self):
+        self.output_dir = folder_paths.get_output_directory()
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "text": ("STRING", {"forceInput": True}),
+                "filename_prefix": ("STRING", {"default": "vibevoice_output"}),
+                "file_extension": (["srt", "txt", "json"], {"default": "srt"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("file_path",)
+    FUNCTION = "save_file"
+    OUTPUT_NODE = True
+    CATEGORY = "VibeVoice"
+
+    def save_file(self, text, filename_prefix="vibevoice_output", file_extension="srt"):
+        import time
+        # Use simple timestamp-based naming to avoid overwrite
+        # If user wants subfolders, they can include slash in prefix, but we need to handle directory creation
+        
+        # Handle subfolders in prefix
+        if "/" in filename_prefix or "\\" in filename_prefix:
+            # Normalize slashes
+            filename_prefix = filename_prefix.replace("\\", "/")
+            subfolder = os.path.dirname(filename_prefix)
+            base_prefix = os.path.basename(filename_prefix)
+            full_output_dir = os.path.join(self.output_dir, subfolder)
+            if not os.path.exists(full_output_dir):
+                os.makedirs(full_output_dir)
+        else:
+            base_prefix = filename_prefix
+            full_output_dir = self.output_dir
+            
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"{base_prefix}_{timestamp}.{file_extension}"
+        file_path = os.path.join(full_output_dir, filename)
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(text)
+            
+        print(f"Saved text to: {file_path}")
+        return {"ui": {"text": [f"Saved to: {file_path}"]}, "result": (file_path,)}
+
 NODE_CLASS_MAPPINGS = {
     "VibeVoiceLoader": VibeVoiceLoader,
     "VibeVoiceTranscribe": VibeVoiceTranscribe,
     "VibeVoiceShowText": VibeVoiceShowText,
+    "VibeVoiceSaveFile": VibeVoiceSaveFile,
     "VibeVoiceTTSLoader": VibeVoiceTTSLoader,
     "VibeVoiceTTSInference": VibeVoiceTTSInference,
     "VibeVoiceTTSInferenceMultiSpeaker": VibeVoiceTTSInferenceMultiSpeaker,
@@ -1049,6 +1098,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "VibeVoiceLoader": "VibeVoice Model Loader (ASR)",
     "VibeVoiceTranscribe": "VibeVoice Transcribe (ASR)",
     "VibeVoiceShowText": "VibeVoice Show String",
+    "VibeVoiceSaveFile": "VibeVoice Save File",
     "VibeVoiceTTSLoader": "VibeVoice TTS Model Loader",
     "VibeVoiceTTSInference": "VibeVoice TTS Inference",
     "VibeVoiceTTSInferenceMultiSpeaker": "VibeVoice TTS Inference (Multi-Speaker)",
