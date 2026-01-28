@@ -367,10 +367,11 @@ class VibeVoiceASRProcessor:
             [sp_start_token] + [sp_pad_token] * vae_tok_len + [sp_end_token]
         ) + '\n' + user_suffix
         
-        user_tokens = self.tokenizer.apply_chat_template(
+        user_prompt_text = self.tokenizer.apply_chat_template(
             [{"role": "user", "content": user_input_string}],
-            tokenize=True
+            tokenize=False
         )
+        user_tokens = self.tokenizer.encode(user_prompt_text)
         
         # Combine tokens
         full_tokens = system_tokens + user_tokens

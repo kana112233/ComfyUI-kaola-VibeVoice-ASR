@@ -396,17 +396,28 @@ class VibeVoiceTTSLoader:
                  os.path.abspath(os.path.join(current_dir, "../models", model_name)),
                  os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_name)),
              ]
+             # Handle model names like "VibeVoice-1.5B/checkpoints"
              if "/" in model_name:
                  model_basename = model_name.split("/")[-1]
+                 model_parent = model_name.rsplit("/", 1)[0] if "/" in model_name else model_name
                  search_paths.append(os.path.join(comfy_models_dir, model_basename))
                  search_paths.append(os.path.join(comfy_models_dir, "vibevoice", model_basename))
+                 # Full path with parent directory (e.g., vibevoice/VibeVoice-1.5B/checkpoints)
+                 search_paths.insert(0, os.path.join(comfy_models_dir, "vibevoice", model_name))
                  search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", model_basename)))
                  search_paths.append(os.path.abspath(os.path.join(current_dir, "../models", "vibevoice", model_basename)))
              
              for potential_path in search_paths:
                  if os.path.exists(potential_path):
-                     model_path = potential_path
-                     break
+                     # Check if this path has config.json or if checkpoints subdirectory has it
+                     if os.path.exists(os.path.join(potential_path, "config.json")):
+                         model_path = potential_path
+                         break
+                     # Auto-detect checkpoints subdirectory
+                     checkpoints_subdir = os.path.join(potential_path, "checkpoints")
+                     if os.path.exists(os.path.join(checkpoints_subdir, "config.json")):
+                         model_path = checkpoints_subdir
+                         break
         
         if os.path.exists(model_path):
              model_path = os.path.abspath(model_path)
