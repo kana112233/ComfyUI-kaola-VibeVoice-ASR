@@ -310,8 +310,15 @@ class VibeVoiceTranscribe:
         return (srt_output, json_output, generated_text, speaker_log)
 
     def generate_log(self, segments):
+        if not isinstance(segments, list):
+            print(f"Warning: segments is not a list: {type(segments)}")
+            return ""
+
         log_lines = []
         for i, seg in enumerate(segments):
+            if not isinstance(seg, dict):
+                continue
+                
             start = seg.get('start_time', 0.0)
             end = seg.get('end_time', 0.0)
             text = seg.get('text', '')
@@ -334,8 +341,14 @@ class VibeVoiceTranscribe:
         return "\n\n".join(log_lines)
 
     def generate_srt(self, segments, speaker_prefix=False):
+        if not isinstance(segments, list):
+            return ""
+
         srt_lines = []
         for i, seg in enumerate(segments):
+            if not isinstance(seg, dict):
+                continue
+
             start = seg.get('start_time', 0.0)
             end = seg.get('end_time', 0.0)
             text = seg.get('text', '')
