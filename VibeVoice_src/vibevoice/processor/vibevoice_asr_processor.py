@@ -24,7 +24,7 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
-SYSTEM_PROMPT = "You are a helpful assistant that transcribes audio input into text output in JSON format."
+SYSTEM_PROMPT = "You are a helpful assistant that transcribes audio input into text output in JSON format. Identify and distinguish different speakers (Speaker 0, Speaker 1, etc)."
 
 
 class VibeVoiceASRProcessor: 
