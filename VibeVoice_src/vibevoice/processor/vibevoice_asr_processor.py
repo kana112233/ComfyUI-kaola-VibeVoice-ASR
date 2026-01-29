@@ -340,8 +340,13 @@ class VibeVoiceASRProcessor:
         
         # Build token sequence following training format
         # 1. System prompt - use apply_chat_template then encode like in training
+        current_system_prompt = SYSTEM_PROMPT
+        if context_info and context_info.strip():
+            # Inject context into system prompt for stronger adherence
+            current_system_prompt += f" {context_info.strip()}"
+            
         system_prompt_text = self.tokenizer.apply_chat_template(
-            [{"role": "system", "content": SYSTEM_PROMPT}],
+            [{"role": "system", "content": current_system_prompt}],
             tokenize=False
         )
         system_tokens = self.tokenizer.encode(system_prompt_text)
