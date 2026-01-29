@@ -200,7 +200,7 @@ class VibeVoiceTranscribe:
         }
 
     RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
-    RETURN_NAMES = ("srt_content", "json_content", "raw_text", "srt_with_speaker")
+    RETURN_NAMES = ("srt_content", "json_content", "raw_text", "speaker_log")
     FUNCTION = "transcribe"
     CATEGORY = "VibeVoice"
 
@@ -302,12 +302,36 @@ class VibeVoiceTranscribe:
             
         # Generate SRT
         srt_output = self.generate_srt(segments)
-        srt_with_speaker = self.generate_srt(segments, speaker_prefix=True)
+        speaker_log = self.generate_log(segments)
         
         import json
         json_output = json.dumps({"raw_text": generated_text, "segments": segments}, indent=2, ensure_ascii=False)
         
-        return (srt_output, json_output, generated_text, srt_with_speaker)
+        return (srt_output, json_output, generated_text, speaker_log)
+
+    def generate_log(self, segments):
+        log_lines = []
+        for i, seg in enumerate(segments):
+            start = seg.get('start_time', 0.0)
+            end = seg.get('end_time', 0.0)
+            text = seg.get('text', '')
+            speaker = seg.get('speaker_id', 'Unknown')
+            
+            # format time: HH:MM:SS,mmm
+            def format_time(seconds):
+                import datetime
+                # Handle potential float precision making huge seconds
+                try:
+                    dt = datetime.datetime(1900, 1, 1) + datetime.timedelta(seconds=seconds)
+                    return dt.strftime('%H:%M:%S,%f')[:-3]
+                except:
+                    return f"{seconds:.2f}"
+            
+            # Compact format: [Time] speaker: text
+            line = f"[{format_time(start)} -> {format_time(end)}] speaker{speaker}: {text}"
+            log_lines.append(line)
+            
+        return "\n".join(log_lines)
 
     def generate_srt(self, segments, speaker_prefix=False):
         srt_lines = []
