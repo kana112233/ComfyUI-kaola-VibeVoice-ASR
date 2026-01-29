@@ -543,11 +543,22 @@ class VibeVoiceASRProcessor:
                     key_mapping = {
                         "Start time": "start_time",
                         "Start": "start_time",
+                        "start_time": "start_time",
+                        "start": "start_time",
                         "End time": "end_time",
                         "End": "end_time",
+                        "end_time": "end_time",
+                        "end": "end_time",
                         "Speaker ID": "speaker_id",
+                        "Speaker Id": "speaker_id",
+                        "SpeakerID": "speaker_id",
                         "Speaker": "speaker_id",
+                        "speaker_id": "speaker_id",
+                        "speaker": "speaker_id",
                         "Content": "text",
+                        "Text": "text",
+                        "text": "text",
+                        "content": "text",
                     }
                     for key, mapped_key in key_mapping.items():
                         if key in item:
