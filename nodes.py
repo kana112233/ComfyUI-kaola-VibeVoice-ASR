@@ -327,11 +327,11 @@ class VibeVoiceTranscribe:
                 except:
                     return f"{seconds:.2f}"
             
-            # Compact format: Index. [Time] speaker: text
-            line = f"{i+1}. [{format_time(start)} -> {format_time(end)}] speaker{speaker}: {text}"
+            # Custom format: Index Start --> End speaker: text
+            line = f"{i+1} {format_time(start)} --> {format_time(end)} speaker{speaker}: {text}"
             log_lines.append(line)
             
-        return "\n".join(log_lines)
+        return "\n\n".join(log_lines)
 
     def generate_srt(self, segments, speaker_prefix=False):
         srt_lines = []
