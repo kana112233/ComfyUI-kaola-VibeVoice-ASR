@@ -327,8 +327,8 @@ class VibeVoiceTranscribe:
                 except:
                     return f"{seconds:.2f}"
             
-            # Compact format: [Time] speaker: text
-            line = f"[{format_time(start)} -> {format_time(end)}] speaker{speaker}: {text}"
+            # Compact format: Index. [Time] speaker: text
+            line = f"{i+1}. [{format_time(start)} -> {format_time(end)}] speaker{speaker}: {text}"
             log_lines.append(line)
             
         return "\n".join(log_lines)
