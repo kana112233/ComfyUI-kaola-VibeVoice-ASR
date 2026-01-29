@@ -292,6 +292,12 @@ class VibeVoiceASRForConditionalGeneration(VibeVoiceASRPreTrainedModel, Generati
                     chunk = speech_tensors[:, start:end].contiguous()
                     if chunk.numel() == 0:
                         continue
+
+                    # [FIX] Skip tiny last chunk that can cause convolution errors (input size < kernel size)
+                    # 1024 samples is ~42ms at 24kHz, safe to skip for end of audio
+                    if chunk.shape[-1] < 1024 and seg_idx == num_segments - 1 and num_segments > 1:
+                        # logger.warning(f"Skipping tiny last chunk of size {chunk.shape[-1]}")
+                        continue
                     
                     # Check if this is the final segment
                     is_final = (seg_idx == num_segments - 1)

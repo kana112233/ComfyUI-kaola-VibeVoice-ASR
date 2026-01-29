@@ -199,8 +199,8 @@ class VibeVoiceTranscribe:
             }
         }
 
-    RETURN_TYPES = ("STRING", "STRING", "STRING")
-    RETURN_NAMES = ("srt_content", "json_content", "raw_text")
+    RETURN_TYPES = ("STRING", "STRING", "STRING", "STRING")
+    RETURN_NAMES = ("srt_content", "json_content", "raw_text", "srt_with_speaker")
     FUNCTION = "transcribe"
     CATEGORY = "VibeVoice"
 
@@ -302,13 +302,14 @@ class VibeVoiceTranscribe:
             
         # Generate SRT
         srt_output = self.generate_srt(segments)
+        srt_with_speaker = self.generate_srt(segments, speaker_prefix=True)
         
         import json
         json_output = json.dumps({"raw_text": generated_text, "segments": segments}, indent=2, ensure_ascii=False)
         
-        return (srt_output, json_output, generated_text)
+        return (srt_output, json_output, generated_text, srt_with_speaker)
 
-    def generate_srt(self, segments):
+    def generate_srt(self, segments, speaker_prefix=False):
         srt_lines = []
         for i, seg in enumerate(segments):
             start = seg.get('start_time', 0.0)
@@ -324,7 +325,10 @@ class VibeVoiceTranscribe:
             
             srt_lines.append(f"{i+1}")
             srt_lines.append(f"{format_time(start)} --> {format_time(end)}")
-            srt_lines.append(f"[{speaker}] {text}")
+            if speaker_prefix:
+                srt_lines.append(f"speaker{speaker}: {text}")
+            else:
+                srt_lines.append(f"[{speaker}] {text}")
             srt_lines.append("")
             
         return "\n".join(srt_lines)
