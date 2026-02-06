@@ -210,7 +210,7 @@ class VibeVoiceTranscribe:
             "required": {
                 "vibevoice_model": ("VIBEVOICE_MODEL", {"tooltip": "Loaded VibeVoice model"}),
                 "audio": ("AUDIO", {"tooltip": "Input audio to transcribe"}), # ComfyUI AUDIO input
-                "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536, "tooltip": "Max tokens to generate"}),
+                "max_new_tokens": ("INT", {"default": 32768, "min": 1, "max": 65536, "tooltip": "Max tokens to generate"}),
                 "temperature": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1, "tooltip": "Randomness (0.0 = deterministic)"}),
                 "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Nucleus sampling probability"}),
                 "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1, "tooltip": "Penalty for repetition (>1.0 reduces repetition)"}),
