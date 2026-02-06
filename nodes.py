@@ -5,6 +5,8 @@ import numpy as np
 import soundfile as sf
 import librosa
 import folder_paths
+import comfy.model_management
+from comfy.utils import ProgressBar
 
 # Add VibeVoice_src to system path to allow imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -94,9 +96,9 @@ class VibeVoiceLoader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name": ("STRING", {"default": "microsoft/VibeVoice-ASR"}),
-                "precision": (["fp16", "bf16", "fp32"], {"default": "bf16"}),
-                "device": (["cuda", "cpu", "mps", "xpu", "auto"], {"default": "auto"}),
+                "model_name": ("STRING", {"default": "microsoft/VibeVoice-ASR", "tooltip": "HuggingFace repo ID or local path to model"}),
+                "precision": (["fp16", "bf16", "fp32"], {"default": "bf16", "tooltip": "Model precision. Use fp16 for VRAM saving"}),
+                "device": (["cuda", "cpu", "mps", "xpu", "auto"], {"default": "auto", "tooltip": "Device to run the model on"}),
             },
         }
 
@@ -205,18 +207,18 @@ class VibeVoiceTranscribe:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "vibevoice_model": ("VIBEVOICE_MODEL",),
-                "audio": ("AUDIO",), # ComfyUI AUDIO input
-                "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536}),
-                "temperature": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1}),
-                "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
-                "num_beams": ("INT", {"default": 1, "min": 1, "max": 10}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "chunk_duration": ("INT", {"default": 120, "min": 10, "max": 600, "step": 1}),
+                "vibevoice_model": ("VIBEVOICE_MODEL", {"tooltip": "Loaded VibeVoice model"}),
+                "audio": ("AUDIO", {"tooltip": "Input audio to transcribe"}), # ComfyUI AUDIO input
+                "max_new_tokens": ("INT", {"default": 4096, "min": 1, "max": 65536, "tooltip": "Max tokens to generate"}),
+                "temperature": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1, "tooltip": "Randomness (0.0 = deterministic)"}),
+                "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Nucleus sampling probability"}),
+                "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1, "tooltip": "Penalty for repetition (>1.0 reduces repetition)"}),
+                "num_beams": ("INT", {"default": 1, "min": 1, "max": 10, "tooltip": "Beam search width (1 = greedy)"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed"}),
+                "chunk_duration": ("INT", {"default": 120, "min": 10, "max": 600, "step": 1, "tooltip": "Split audio into chunks of this duration (seconds) to save memory"}),
             },
             "optional": {
-                 "context_info": ("STRING", {"multiline": True, "default": "", "placeholder": "Enter hotwords or context here..."}),
+                 "context_info": ("STRING", {"multiline": True, "default": "", "placeholder": "Enter hotwords or context here...", "tooltip": "Context prompt / hotwords"}),
             }
         }
 
@@ -286,16 +288,24 @@ class VibeVoiceTranscribe:
             all_segments = []
             all_raw_texts = []
             chunk_start = 0
+            # Calculate total chunks for progress bar
+            total_chunks = int(np.ceil((len(waveform_np)) / (chunk_samples - overlap_samples)))
+            pbar = ProgressBar(total_chunks)
+            
+            chunk_start = 0
             chunk_idx = 0
             
             while chunk_start < len(waveform_np):
+                # Check for cancellation
+                comfy.model_management.throw_exception_if_processing_interrupted()
+                
                 chunk_end = min(chunk_start + chunk_samples, len(waveform_np))
                 chunk_audio = waveform_np[chunk_start:chunk_end]
                 
                 # Calculate time offset for this chunk
                 time_offset = chunk_start / sample_rate
                 
-                print(f"\n[Chunk {chunk_idx + 1}] Processing {time_offset:.1f}s - {chunk_end/sample_rate:.1f}s ({len(chunk_audio)/sample_rate:.1f}s)")
+                print(f"\n[Chunk {chunk_idx + 1}/{total_chunks}] Processing {time_offset:.1f}s - {chunk_end/sample_rate:.1f}s ({len(chunk_audio)/sample_rate:.1f}s)")
                 
                 # Process this chunk
                 try:
@@ -310,10 +320,17 @@ class VibeVoiceTranscribe:
                     print(f"  ✓ Found {len(chunk_segments)} segments in this chunk")
                     
                 except Exception as e:
+                    # Check if it's an interrupt exception just in case it was caught
+                    if "interrupted" in str(e).lower():
+                        raise e
+                        
                     print(f"  ✗ Error processing chunk: {e}")
                     import traceback
                     traceback.print_exc()
                 
+                # Update progress bar
+                pbar.update(1)
+
                 # Clear GPU memory after each chunk
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -393,7 +410,19 @@ class VibeVoiceTranscribe:
             segments = processor.post_process_transcription(generated_text)
         except Exception as e:
             print(f"Error parsing segments: {e}")
-            segments = [{"start_time": 0, "end_time": 0, "text": f"JSON PARSE ERROR. Raw output:\n{generated_text}", "speaker_id": 0}]
+            print(f"Raw generated text causing error: {generated_text}")
+            # Fallback: create a single segment with the raw text
+            # Use chunks timestamps if possible, or just 0-0
+            start_t = 0
+            end_t = 0
+            # Try to guess duration from input length roughly if possible? 
+            # For now, just mark it as error segment
+            segments = [{
+                "start_time": 0, 
+                "end_time": 0, 
+                "text": f"[JSON_ERROR] {generated_text}", 
+                "speaker_id": 0
+            }]
         
         # Adjust timestamps by adding time_offset
         if time_offset > 0:
@@ -546,9 +575,9 @@ class VibeVoiceTTSLoader:
         
         return {
             "required": {
-                "model_name": (available_models, {"default": available_models[0]}),
-                "precision": (["fp16", "bf16", "fp32"], {"default": "bf16"}),
-                "device": (["cuda", "cpu", "mps", "auto"], {"default": "auto"}),
+                "model_name": (available_models, {"default": available_models[0], "tooltip": "HuggingFace repo ID or local path"}),
+                "precision": (["fp16", "bf16", "fp32"], {"default": "bf16", "tooltip": "Model precision"}),
+                "device": (["cuda", "cpu", "mps", "auto"], {"default": "auto", "tooltip": "Device"}),
             },
         }
 
@@ -947,8 +976,8 @@ class VibeVoiceStreamingLoader:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model_name": ("STRING", {"default": "microsoft/VibeVoice-Realtime-0.5B"}),
-                "device": (["cuda", "cpu", "mps", "auto"], {"default": "auto"}),
+                "model_name": ("STRING", {"default": "microsoft/VibeVoice-Realtime-0.5B", "tooltip": "HuggingFace repo ID or local path"}),
+                "device": (["cuda", "cpu", "mps", "auto"], {"default": "auto", "tooltip": "Device to run the model on"}),
             },
         }
 
@@ -1048,11 +1077,11 @@ class VibeVoiceStreamingInference:
 
         return {
             "required": {
-                "vibevoice_streaming_model": ("VIBEVOICE_STREAMING_MODEL",),
-                "text": ("STRING", {"multiline": True, "default": "Hello, this is a real-time streaming test."}),
-                "speaker_name": (presets, {"default": presets[0] if presets else ""}),
-                "cfg_scale": ("FLOAT", {"default": 1.5, "min": 0.1, "max": 10.0, "step": 0.1}),
-                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "vibevoice_streaming_model": ("VIBEVOICE_STREAMING_MODEL", {"tooltip": "Loaded streaming model"}),
+                "text": ("STRING", {"multiline": True, "default": "Hello, this is a real-time streaming test.", "tooltip": "Text to generate speech from"}),
+                "speaker_name": (presets, {"default": presets[0] if presets else "", "tooltip": "Voice preset to use"}),
+                "cfg_scale": ("FLOAT", {"default": 1.5, "min": 0.1, "max": 10.0, "step": 0.1, "tooltip": "Classifier Free Guidance scale"}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed"}),
             },
         }
 
