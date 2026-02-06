@@ -404,19 +404,27 @@ class VibeVoiceTranscribe:
         input_length = inputs['input_ids'].shape[1]
         generated_ids = output_ids[0, input_length:]
         generated_text = processor.decode(generated_ids, skip_special_tokens=True)
+        # If empty, try decoding with special tokens to see what happened
+        if not generated_text.strip():
+            generated_text_raw = processor.decode(generated_ids, skip_special_tokens=False)
+            print(f"Warning: Generated text was empty. Raw output with special tokens: {repr(generated_text_raw)}")
+            if generated_text_raw.strip():
+                generated_text = generated_text_raw # Fallback to raw text if standard decode is empty
+        print(f"DEBUG: Chunk generated text length: {len(generated_text)}, content repr: {repr(generated_text)}")
         
         # Post-process
         try:
             segments = processor.post_process_transcription(generated_text)
         except Exception as e:
             print(f"Error parsing segments: {e}")
-            print(f"Raw generated text causing error: {generated_text}")
+            segments = []  # Will be handled below
+
+        # Check for empty segments (could be due to parsing error caught inside processor)
+        if not segments and generated_text.strip():
+            print(f"Warning: No segments found but generated text exists. Using fallback.")
+            print(f"Raw generated text causing issue: {generated_text}")
+            
             # Fallback: create a single segment with the raw text
-            # Use chunks timestamps if possible, or just 0-0
-            start_t = 0
-            end_t = 0
-            # Try to guess duration from input length roughly if possible? 
-            # For now, just mark it as error segment
             segments = [{
                 "start_time": 0, 
                 "end_time": 0, 
