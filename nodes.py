@@ -213,7 +213,7 @@ class VibeVoiceTranscribe:
                 "max_new_tokens": ("INT", {"default": 32768, "min": 1, "max": 65536, "tooltip": "Max tokens to generate"}),
                 "temperature": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1, "tooltip": "Randomness (0.0 = deterministic)"}),
                 "top_p": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Nucleus sampling probability"}),
-                "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1, "tooltip": "Penalty for repetition (>1.0 reduces repetition)"}),
+                "repetition_penalty": ("FLOAT", {"default": 1.2, "min": 0.0, "max": 10.0, "step": 0.1, "tooltip": "Penalty for repetition (>1.0 reduces repetition)"}),
                 "num_beams": ("INT", {"default": 1, "min": 1, "max": 10, "tooltip": "Beam search width (1 = greedy)"}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "tooltip": "Random seed"}),
                 "chunk_duration": ("INT", {"default": 120, "min": 10, "max": 600, "step": 1, "tooltip": "Split audio into chunks of this duration (seconds) to save memory"}),
