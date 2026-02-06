@@ -24,16 +24,19 @@ def test_asr():
     print("=" * 60)
     
     # Import nodes
+    print("\n[LOG] Importing nodes...")
     from nodes import VibeVoiceLoader, VibeVoiceTranscribe
+    print("[LOG] Nodes imported successfully")
     
     # 1. Load ASR model
     print("\n1. Loading VibeVoice ASR model...")
     loader = VibeVoiceLoader()
     
     try:
+        print("[LOG] Calling loader.load_model()...")
         result = loader.load_model(
             model_name="/Users/xiohu/work/ai-tools/models/VibeVoice-ASR",
-            precision="fp32",
+            precision="fp16",  # Use fp16 to save memory
             device="mps"
         )
         model_bundle = result[0]
@@ -67,7 +70,8 @@ def test_asr():
     transcriber = VibeVoiceTranscribe()
     
     try:
-        srt_content, json_content, raw_text = transcriber.transcribe(
+        print("[LOG] Calling transcriber.transcribe()...")
+        srt_content, json_content, raw_text, speaker_log = transcriber.transcribe(
             vibevoice_model=model_bundle,
             audio=test_audio,
             max_new_tokens=4096,
@@ -76,6 +80,7 @@ def test_asr():
             repetition_penalty=1.0,
             num_beams=1,
             seed=0,
+            chunk_duration=120,  # New parameter
             context_info=""
         )
         print(f"✅ Transcription successful!")
@@ -92,3 +97,4 @@ def test_asr():
 
 if __name__ == "__main__":
     test_asr()
+

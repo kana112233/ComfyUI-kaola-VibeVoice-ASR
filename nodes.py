@@ -156,25 +156,45 @@ class VibeVoiceLoader:
             else:
                 device = "cpu"
 
-        # MPS/CPU usually prefer float32 for stability if not using specific kernels
-        if device == "mps" or device == "cpu":
-             if precision != "fp32":
-                 print(f"Warning: forcing float32 for {device} device stability")
-                 dtype = torch.float32
+        # CPU usually prefers float32 for stability
+        # MPS can use fp16 to save memory (model is stored in bf16/fp16)
+        if device == "cpu":
+            if precision != "fp32":
+                print(f"Warning: forcing float32 for {device} device stability")
+                dtype = torch.float32
 
         processor = VibeVoiceASRProcessor.from_pretrained(model_path)
         
         # Load model using from_pretrained
         # We need trust_remote_code=True as per original repo usage
-        model = VibeVoiceASRForConditionalGeneration.from_pretrained(
-            model_path,
-            dtype=dtype,
-            device_map=device if device != "cpu" else None, # accelerate handles device_map
-            trust_remote_code=True
-        )
-        
-        if device == "cpu":
-            model = model.to(device)
+        # low_cpu_mem_usage=True allows loading large models with limited memory
+        # For MPS: load to CPU first then move to MPS to avoid memory pre-allocation issues
+        if device == "mps":
+            print("Loading model to CPU first, then moving to MPS...")
+            model = VibeVoiceASRForConditionalGeneration.from_pretrained(
+                model_path,
+                dtype=dtype,
+                device_map=None,  # Load to CPU first
+                trust_remote_code=True,
+                low_cpu_mem_usage=True
+            )
+            model = model.to("mps")
+        elif device == "cuda":
+            model = VibeVoiceASRForConditionalGeneration.from_pretrained(
+                model_path,
+                dtype=dtype,
+                device_map=device,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True
+            )
+        else:  # CPU
+            model = VibeVoiceASRForConditionalGeneration.from_pretrained(
+                model_path,
+                dtype=dtype,
+                device_map=None,
+                trust_remote_code=True,
+                low_cpu_mem_usage=True
+            )
 
         model.eval()
         
@@ -297,6 +317,8 @@ class VibeVoiceTranscribe:
                 # Clear GPU memory after each chunk
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
+                elif torch.backends.mps.is_available():
+                    torch.mps.empty_cache()
                 
                 # Move to next chunk (with overlap handling)
                 if chunk_end >= len(waveform_np):
