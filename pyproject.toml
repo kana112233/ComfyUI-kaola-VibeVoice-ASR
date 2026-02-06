@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-kaola-vibevoice-asr"
 description = "ComfyUI custom nodes for VibeVoice ASR (Automatic Speech Recognition) with support for auto-labeling music/lyrics and high accuracy transcription."
-version = "1.0.2"
+version = "1.0.3"
 license = {file = "LICENSE"} 
 classifiers = [
     "Operating System :: OS Independent",
