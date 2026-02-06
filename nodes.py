@@ -193,6 +193,7 @@ class VibeVoiceTranscribe:
                 "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "num_beams": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "chunk_duration": ("INT", {"default": 120, "min": 30, "max": 600, "step": 30}),
             },
             "optional": {
                  "context_info": ("STRING", {"multiline": True, "default": "", "placeholder": "Enter hotwords or context here..."}),
@@ -204,7 +205,7 @@ class VibeVoiceTranscribe:
     FUNCTION = "transcribe"
     CATEGORY = "VibeVoice"
 
-    def transcribe(self, vibevoice_model, audio, max_new_tokens, temperature, top_p, repetition_penalty, num_beams, seed, context_info=""):
+    def transcribe(self, vibevoice_model, audio, max_new_tokens, temperature, top_p, repetition_penalty, num_beams, seed, chunk_duration=120, context_info=""):
         if seed is not None:
              torch.manual_seed(seed)
              if torch.cuda.is_available():
@@ -248,7 +249,89 @@ class VibeVoiceTranscribe:
         else:
              print("DEBUG - Sample rates match. Skipping resampling.")
 
-        print(f"Processing audio: {len(waveform_np)} samples at {sample_rate}Hz")
+        audio_duration = len(waveform_np) / sample_rate
+        print(f"Processing audio: {len(waveform_np)} samples at {sample_rate}Hz ({audio_duration:.1f}s)")
+        
+        # Chunked processing for long audio to avoid OOM
+        # If audio is longer than chunk_duration, split into overlapping chunks
+        chunk_samples = int(chunk_duration * sample_rate)
+        overlap_samples = int(5 * sample_rate)  # 5 second overlap to avoid cutting words
+        
+        if len(waveform_np) > chunk_samples:
+            print(f"\n{'='*60}")
+            print(f"Long audio detected ({audio_duration:.1f}s > {chunk_duration}s)")
+            print(f"Using chunked processing with {chunk_duration}s chunks")
+            print(f"{'='*60}\n")
+            
+            all_segments = []
+            all_raw_texts = []
+            chunk_start = 0
+            chunk_idx = 0
+            
+            while chunk_start < len(waveform_np):
+                chunk_end = min(chunk_start + chunk_samples, len(waveform_np))
+                chunk_audio = waveform_np[chunk_start:chunk_end]
+                
+                # Calculate time offset for this chunk
+                time_offset = chunk_start / sample_rate
+                
+                print(f"\n[Chunk {chunk_idx + 1}] Processing {time_offset:.1f}s - {chunk_end/sample_rate:.1f}s ({len(chunk_audio)/sample_rate:.1f}s)")
+                
+                # Process this chunk
+                try:
+                    chunk_segments, chunk_raw_text = self._process_single_chunk(
+                        chunk_audio, sample_rate, processor, model, device,
+                        max_new_tokens, temperature, top_p, repetition_penalty,
+                        num_beams, context_info, time_offset
+                    )
+                    
+                    all_segments.extend(chunk_segments)
+                    all_raw_texts.append(chunk_raw_text)
+                    print(f"  ✓ Found {len(chunk_segments)} segments in this chunk")
+                    
+                except Exception as e:
+                    print(f"  ✗ Error processing chunk: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                # Clear GPU memory after each chunk
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                # Move to next chunk (with overlap handling)
+                if chunk_end >= len(waveform_np):
+                    break
+                chunk_start = chunk_end - overlap_samples
+                chunk_idx += 1
+            
+            # Merge overlapping segments (remove duplicates from overlap regions)
+            segments = self._merge_overlapping_segments(all_segments, overlap_duration=5.0)
+            generated_text = "\n\n===CHUNK SEPARATOR===\n\n".join(all_raw_texts)
+            
+            print(f"\n{'='*60}")
+            print(f"Chunked processing complete: {len(segments)} total segments")
+            print(f"{'='*60}\n")
+        else:
+            # Standard processing for short audio
+            segments, generated_text = self._process_single_chunk(
+                waveform_np, sample_rate, processor, model, device,
+                max_new_tokens, temperature, top_p, repetition_penalty,
+                num_beams, context_info, time_offset=0.0
+            )
+        
+        # Generate SRT
+        srt_output = self.generate_srt(segments)
+        speaker_log = self.generate_log(segments)
+        
+        import json
+        json_output = json.dumps({"raw_text": generated_text, "segments": segments}, indent=2, ensure_ascii=False)
+        
+        return (srt_output, json_output, generated_text, speaker_log)
+    
+    def _process_single_chunk(self, waveform_np, sample_rate, processor, model, device,
+                               max_new_tokens, temperature, top_p, repetition_penalty,
+                               num_beams, context_info, time_offset=0.0):
+        """Process a single audio chunk and return segments with adjusted timestamps."""
         
         inputs = processor(
             audio=waveform_np,
@@ -275,14 +358,6 @@ class VibeVoiceTranscribe:
         # remove None values
         generation_config = {k: v for k, v in generation_config.items() if v is not None}
 
-        # Debug inputs
-        print(f"DEBUG - Inputs keys: {list(inputs.keys())}")
-        if "speech_tensors" in inputs:
-            print(f"DEBUG - Speech tensors shape: {inputs['speech_tensors'].shape}")
-        if "acoustic_input_mask" in inputs:
-             print(f"DEBUG - Acoustic mask sum: {inputs['acoustic_input_mask'].sum()}")
-        print(f"DEBUG - Generation config: pad_token_id={generation_config.get('pad_token_id')}, eos_token_id={generation_config.get('eos_token_id')}")
-
         with torch.no_grad():
             output_ids = model.generate(**inputs, **generation_config)
             
@@ -290,24 +365,60 @@ class VibeVoiceTranscribe:
         input_length = inputs['input_ids'].shape[1]
         generated_ids = output_ids[0, input_length:]
         generated_text = processor.decode(generated_ids, skip_special_tokens=True)
-        print(f"DEBUG - Generated Text:\n{generated_text}\n-------------------")
         
         # Post-process
         try:
             segments = processor.post_process_transcription(generated_text)
         except Exception as e:
             print(f"Error parsing segments: {e}")
-            # If parsing fails, try to return raw text in a dummy segment so user can see it
-            segments = [{"start": 0, "end": 0, "text": f"JSON PARSE ERROR. Raw output:\n{generated_text}"}]
+            segments = [{"start_time": 0, "end_time": 0, "text": f"JSON PARSE ERROR. Raw output:\n{generated_text}", "speaker_id": 0}]
+        
+        # Adjust timestamps by adding time_offset
+        if time_offset > 0:
+            for seg in segments:
+                if 'start_time' in seg:
+                    seg['start_time'] = seg['start_time'] + time_offset
+                if 'end_time' in seg:
+                    seg['end_time'] = seg['end_time'] + time_offset
+        
+        return segments, generated_text
+    
+    def _merge_overlapping_segments(self, all_segments, overlap_duration=5.0):
+        """Merge segments from overlapping chunks, removing duplicates."""
+        if not all_segments:
+            return []
+        
+        # Sort by start time
+        sorted_segments = sorted(all_segments, key=lambda x: x.get('start_time', 0))
+        
+        merged = []
+        for seg in sorted_segments:
+            if not merged:
+                merged.append(seg)
+                continue
             
-        # Generate SRT
-        srt_output = self.generate_srt(segments)
-        speaker_log = self.generate_log(segments)
+            last_seg = merged[-1]
+            last_end = last_seg.get('end_time', 0)
+            curr_start = seg.get('start_time', 0)
+            
+            # Check if this segment overlaps with the previous one
+            # and has similar text (likely a duplicate from overlap region)
+            if curr_start < last_end:
+                # These segments overlap - check text similarity
+                last_text = last_seg.get('text', '').strip()
+                curr_text = seg.get('text', '').strip()
+                
+                # If texts are very similar or one contains the other, skip the duplicate
+                if last_text == curr_text:
+                    continue
+                if len(last_text) > 10 and len(curr_text) > 10:
+                    # Check if significant portion overlaps (simple heuristic)
+                    if last_text[-20:] == curr_text[:20] or last_text in curr_text or curr_text in last_text:
+                        continue
+            
+            merged.append(seg)
         
-        import json
-        json_output = json.dumps({"raw_text": generated_text, "segments": segments}, indent=2, ensure_ascii=False)
-        
-        return (srt_output, json_output, generated_text, speaker_log)
+        return merged
 
     def generate_log(self, segments):
         if not isinstance(segments, list):
