@@ -213,7 +213,7 @@ class VibeVoiceTranscribe:
                 "repetition_penalty": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.1}),
                 "num_beams": ("INT", {"default": 1, "min": 1, "max": 10}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "chunk_duration": ("INT", {"default": 120, "min": 30, "max": 600, "step": 30}),
+                "chunk_duration": ("INT", {"default": 120, "min": 10, "max": 600, "step": 1}),
             },
             "optional": {
                  "context_info": ("STRING", {"multiline": True, "default": "", "placeholder": "Enter hotwords or context here..."}),
