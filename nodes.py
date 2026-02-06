@@ -421,16 +421,43 @@ class VibeVoiceTranscribe:
 
         # Check for empty segments (could be due to parsing error caught inside processor)
         if not segments and generated_text.strip():
-            print(f"Warning: No segments found but generated text exists. Using fallback.")
-            print(f"Raw generated text causing issue: {generated_text}")
+            print(f"Warning: No segments found but generated text exists. Attempting to repair/fallback.")
+            # print(f"Raw generated text causing issue: {generated_text}") # Reduced verbosity as we might fix it
             
-            # Fallback: create a single segment with the raw text
-            segments = [{
-                "start_time": 0, 
-                "end_time": 0, 
-                "text": f"[JSON_ERROR] {generated_text}", 
-                "speaker_id": 0
-            }]
+            # Try to repair truncated JSON
+            try:
+                # Find start of JSON
+                json_start = generated_text.find("[")
+                if json_start != -1:
+                    potential_json = generated_text[json_start:]
+                    # Try to parse as is (unlikely if processor failed, but worth a shot if logic differed)
+                    try:
+                        segments = json.loads(potential_json)
+                    except json.JSONDecodeError:
+                        # Common case: truncated output. Try appending ']' or '}]' or '"}]'
+                        # Simple repair: try finding the last valid object end '}'
+                        last_object_end = potential_json.rfind("}")
+                        if last_object_end != -1:
+                            # Construct a valid array up to the last object
+                            repaired_json = potential_json[:last_object_end+1] + "]"
+                            try:
+                                segments = json.loads(repaired_json)
+                                print(f"  ✓ Successfully repaired truncated JSON! Recovered segments.")
+                            except:
+                                pass
+
+            except Exception as e:
+                print(f"  ✗ JSON repair failed: {e}")
+
+            # If still empty, use the raw text fallback
+            if not segments:
+                print(f"  Using raw text fallback.")
+                segments = [{
+                    "start_time": 0, 
+                    "end_time": 0, 
+                    "text": f"[JSON_ERROR] {generated_text}", 
+                    "speaker_id": 0
+                }]
         
         # Adjust timestamps by adding time_offset
         if time_offset > 0:
