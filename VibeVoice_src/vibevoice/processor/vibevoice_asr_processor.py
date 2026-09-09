@@ -24,7 +24,22 @@ except ImportError:
 
 logger = logging.get_logger(__name__)
 
-SYSTEM_PROMPT = "You are a helpful assistant that transcribes audio input into text output in JSON format. Identify and distinguish different speakers (Speaker 0, Speaker 1, etc)."
+SYSTEM_PROMPT = "You are a helpful assistant that transcribes audio input into text output in JSON format."
+
+
+def _ships_tokenizer(pretrained_model_name_or_path, **kwargs) -> bool:
+    """Whether a checkpoint carries its own tokenizer files."""
+    from transformers.utils import cached_file
+
+    if os.path.exists(os.path.join(str(pretrained_model_name_or_path),
+                                   "tokenizer_config.json")):
+        return True
+    try:
+        cached_file(pretrained_model_name_or_path, "tokenizer_config.json",
+                    **kwargs)
+        return True
+    except Exception:
+        return False
 
 
 class VibeVoiceASRProcessor: 
@@ -37,7 +52,7 @@ class VibeVoiceASRProcessor:
     Args:
         tokenizer: The text tokenizer for processing text
         audio_processor: The audio processor for processing speech
-        speech_tok_compress_ratio (int): Compression ratio for speech tokenization
+        speech_tok_compress_ratio (int): Compression ratio for speech tokenization. Default: 3200 (product of encoder ratios [8,5,5,4,2,2])
         target_sample_rate (int): Target sample rate for audio
         normalize_audio (bool): Whether to normalize audio input
     """
@@ -46,7 +61,7 @@ class VibeVoiceASRProcessor:
         self,
         tokenizer=None,
         audio_processor=None,
-        speech_tok_compress_ratio=320,
+        speech_tok_compress_ratio=3200,
         target_sample_rate=24000,
         normalize_audio=True,
         **kwargs
@@ -134,11 +149,28 @@ class VibeVoiceASRProcessor:
         target_sample_rate = config.get("target_sample_rate", 24000)
         normalize_audio = config.get("normalize_audio", True)
         
-        # Load tokenizer
-        language_model_pretrained_name = config.get("language_model_pretrained_name", None) or kwargs.pop("language_model_pretrained_name", "Qwen/Qwen2.5-1.5B")
+        # Streaming model: its own tokenizer files win over any base-LM name,
+        # because <|text_chunk_end|> lives in them and not in the base vocabulary.
+        explicit_name = kwargs.pop("language_model_pretrained_name", None)
+        own_tokenizer = _ships_tokenizer(pretrained_model_name_or_path, **kwargs)
+        if own_tokenizer:
+            language_model_pretrained_name = pretrained_model_name_or_path
+        else:
+            language_model_pretrained_name = (
+                config.get("language_model_pretrained_name", None)
+                or explicit_name
+                or "Qwen/Qwen2.5-1.5B")
+        if explicit_name and explicit_name != language_model_pretrained_name:
+            # Dropping it silently surfaces much later as a vocabulary mismatch,
+            # by which point the argument looks like it was honoured.
+            logger.warning(
+                f"ignoring language_model_pretrained_name={explicit_name!r}: "
+                f"loading the tokenizer from {language_model_pretrained_name}, "
+                + ("which ships its own tokenizer files" if own_tokenizer
+                   else "as named in preprocessor_config.json"))
         logger.info(f"Loading tokenizer from {language_model_pretrained_name}")
-        
-        if 'qwen' in language_model_pretrained_name.lower():
+
+        if own_tokenizer or 'qwen' in str(language_model_pretrained_name).lower():
             tokenizer = VibeVoiceASRTextTokenizerFast.from_pretrained(
                 language_model_pretrained_name,
                 **kwargs
@@ -334,19 +366,18 @@ class VibeVoiceASRProcessor:
         if use_streaming and audio_duration < 60.0:
             use_streaming = False
         
-        # Calculate token length - use floor to match encoder output
-        # The encoder produces floor(samples / compress_ratio) features
-        vae_tok_len = len(audio_array) // self.speech_tok_compress_ratio
+        # Calculate token length based on streaming mode
+        # Non-streaming: uses ceil (encoder adds extra_padding for stride alignment)
+        # Streaming: uses floor (segments processed independently, no global alignment)
+        # if use_streaming:
+        #     vae_tok_len = len(audio_array) // self.speech_tok_compress_ratio
+        # else:
+        vae_tok_len = math.ceil(len(audio_array) / self.speech_tok_compress_ratio)
         
         # Build token sequence following training format
         # 1. System prompt - use apply_chat_template then encode like in training
-        current_system_prompt = SYSTEM_PROMPT
-        if context_info and context_info.strip():
-            # Inject context into system prompt for stronger adherence
-            current_system_prompt += f" {context_info.strip()}"
-            
         system_prompt_text = self.tokenizer.apply_chat_template(
-            [{"role": "system", "content": current_system_prompt}],
+            [{"role": "system", "content": SYSTEM_PROMPT}],
             tokenize=False
         )
         system_tokens = self.tokenizer.encode(system_prompt_text)
@@ -368,11 +399,10 @@ class VibeVoiceASRProcessor:
             [sp_start_token] + [sp_pad_token] * vae_tok_len + [sp_end_token]
         ) + '\n' + user_suffix
         
-        user_prompt_text = self.tokenizer.apply_chat_template(
+        user_tokens = self.tokenizer.apply_chat_template(
             [{"role": "user", "content": user_input_string}],
-            tokenize=False
+            tokenize=True
         )
-        user_tokens = self.tokenizer.encode(user_prompt_text)
         
         # Combine tokens
         full_tokens = system_tokens + user_tokens
@@ -543,22 +573,11 @@ class VibeVoiceASRProcessor:
                     key_mapping = {
                         "Start time": "start_time",
                         "Start": "start_time",
-                        "start_time": "start_time",
-                        "start": "start_time",
                         "End time": "end_time",
                         "End": "end_time",
-                        "end_time": "end_time",
-                        "end": "end_time",
                         "Speaker ID": "speaker_id",
-                        "Speaker Id": "speaker_id",
-                        "SpeakerID": "speaker_id",
                         "Speaker": "speaker_id",
-                        "speaker_id": "speaker_id",
-                        "speaker": "speaker_id",
                         "Content": "text",
-                        "Text": "text",
-                        "text": "text",
-                        "content": "text",
                     }
                     for key, mapped_key in key_mapping.items():
                         if key in item:

@@ -284,7 +284,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}. Please choose `sigma_min` instead."
             )
 
-        # setable values
+        # settable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32)[::-1].copy()
         self.timesteps = torch.from_numpy(timesteps)
@@ -292,8 +292,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.lower_order_nums = 0
         self._step_index = None
         self._begin_index = None
-        if not self.sigmas.is_meta:
-            self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def step_index(self):
@@ -347,40 +346,12 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if timesteps is not None and self.config.use_lu_lambdas:
             raise ValueError("Cannot use `timesteps` with `config.use_lu_lambdas = True`")
 
-        # PATCH: If alphas_cumprod is on meta device, recompute it and related tensors on CPU
-        if hasattr(self.alphas_cumprod, 'is_meta') and self.alphas_cumprod.is_meta:
-            betas = torch.linspace(
-                self.config.beta_start, self.config.beta_end, 
-                self.config.num_train_timesteps, dtype=torch.float32, device='cpu'
-            )
-            alphas = 1.0 - betas
-            self.alphas_cumprod = torch.cumprod(alphas, dim=0)
-            alpha_t = torch.sqrt(self.alphas_cumprod)
-            sigma_t = torch.sqrt(1 - self.alphas_cumprod)
-            self.lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
-
         if timesteps is not None:
             timesteps = np.array(timesteps).astype(np.int64)
         else:
             # Clipping the minimum of all lambda(t) for numerical stability.
             # This is critical for cosine (squaredcos_cap_v2) noise schedule.
-            
-            # PATCH: Handle meta tensors (recompute if needed)
-            if self.lambda_t.is_meta or (hasattr(self.alphas_cumprod, 'is_meta') and self.alphas_cumprod.is_meta):
-                # Recompute from config values on CPU to avoid meta error
-                betas = torch.linspace(
-                    self.config.beta_start, self.config.beta_end, 
-                    self.config.num_train_timesteps, dtype=torch.float32, device='cpu'
-                )
-                alphas = 1.0 - betas
-                alphas_cumprod = torch.cumprod(alphas, dim=0)
-                alpha_t = torch.sqrt(alphas_cumprod)
-                sigma_t = torch.sqrt(1 - alphas_cumprod)
-                lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
-                clipped_idx = torch.searchsorted(torch.flip(lambda_t, [0]), self.config.lambda_min_clipped)
-            else:
-                clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
-            
+            clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped)
             last_timestep = ((self.config.num_train_timesteps - clipped_idx).numpy()).item()
 
             # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
@@ -588,7 +559,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 1:
                 sample = args[1]
             else:
-                raise ValueError("missing `sample` as a required keyward argument")
+                raise ValueError("missing `sample` as a required keyword argument")
         if timestep is not None:
             deprecate(
                 "timesteps",
@@ -680,7 +651,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 2:
                 sample = args[2]
             else:
-                raise ValueError(" missing `sample` as a required keyward argument")
+                raise ValueError(" missing `sample` as a required keyword argument")
         if timestep is not None:
             deprecate(
                 "timesteps",
@@ -749,7 +720,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 2:
                 sample = args[2]
             else:
-                raise ValueError(" missing `sample` as a required keyward argument")
+                raise ValueError(" missing `sample` as a required keyword argument")
         if timestep_list is not None:
             deprecate(
                 "timestep_list",
@@ -872,7 +843,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 2:
                 sample = args[2]
             else:
-                raise ValueError(" missing`sample` as a required keyward argument")
+                raise ValueError(" missing`sample` as a required keyword argument")
         if timestep_list is not None:
             deprecate(
                 "timestep_list",
@@ -991,7 +962,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         Returns:
             [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`:
-                If return_dict is `True`, [`~schedulers.scheduling_utils.SchedulerOutput`] is returned, otherwise a
+                If return_dict is `True`, [`~schedulers.scheduling_utils.SchedulerOutput`] is returned; otherwise, a
                 tuple is returned where the first element is the sample tensor.
 
         """

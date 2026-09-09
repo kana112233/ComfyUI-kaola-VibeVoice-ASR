@@ -3,7 +3,8 @@
 from typing import List, Optional, Union
 
 from transformers.utils import logging
-from transformers import Qwen2Tokenizer, Qwen2TokenizerFast
+from transformers.models.qwen2.tokenization_qwen2 import Qwen2Tokenizer
+from transformers.models.qwen2.tokenization_qwen2_fast import Qwen2TokenizerFast
 
 logger = logging.get_logger(__name__)
 
@@ -84,27 +85,27 @@ class VibeVoiceTextTokenizer(Qwen2Tokenizer):
     
     @property
     def eos_id(self) -> int:
-        """Id of the end of sequence token."""
+        """ID of the end of sequence token."""
         return self._eos_id
     
     @property
     def speech_start_id(self) -> int:
-        """Id of the speech start token."""
+        """ID of the speech start token."""
         return self._speech_start_id
     
     @property
     def speech_end_id(self) -> int:
-        """Id of the speech end token."""
+        """ID of the speech end token."""
         return self._speech_end_id
     
     @property
     def speech_diffusion_id(self) -> int:
-        """Id of the speech diffusion token."""
+        """ID of the speech diffusion token."""
         return self._speech_diffusion_id
     
     @property
     def pad_id(self) -> int:
-        """Id used for padding (returns -100 for loss masking)."""
+        """ID used for padding (returns -100 for loss masking)."""
         return -100
 
 
@@ -183,27 +184,27 @@ class VibeVoiceTextTokenizerFast(Qwen2TokenizerFast):
     
     @property
     def eos_id(self) -> int:
-        """Id of the end of sequence token."""
+        """ID of the end of sequence token."""
         return self._eos_id
     
     @property
     def speech_start_id(self) -> int:
-        """Id of the speech start token."""
+        """ID of the speech start token."""
         return self._speech_start_id
     
     @property
     def speech_end_id(self) -> int:
-        """Id of the speech end token."""
+        """ID of the speech end token."""
         return self._speech_end_id
     
     @property
     def speech_diffusion_id(self) -> int:
-        """Id of the speech diffusion token."""
+        """ID of the speech diffusion token."""
         return self._speech_diffusion_id
     
     @property
     def pad_id(self) -> int:
-        """Id used for padding (returns -100 for loss masking)."""
+        """ID used for padding (returns -100 for loss masking)."""
         return self._pad_id
 
 class VibeVoiceASRTextTokenizerFast(Qwen2TokenizerFast):
@@ -270,11 +271,15 @@ class VibeVoiceASRTextTokenizerFast(Qwen2TokenizerFast):
             ]
         }
         num_added = self.add_special_tokens(special_tokens)
-        
+
         # Cache special token IDs
         self._speech_start_id = self.convert_tokens_to_ids("<|object_ref_start|>")
         self._speech_end_id = self.convert_tokens_to_ids("<|object_ref_end|>")
         self._speech_pad_id = self.convert_tokens_to_ids("<|box_start|>")
+        # Streaming model: read only, never added to the vocabulary.
+        self._text_chunk_end_id = self.convert_tokens_to_ids("<|text_chunk_end|>")
+        if self._text_chunk_end_id == self.unk_token_id:
+            self._text_chunk_end_id = None
 
         self._eos_id = self.eos_token_id # qwen2 / qwen3
         self._pad_id = self.convert_tokens_to_ids('<|image_pad|>')
@@ -283,24 +288,29 @@ class VibeVoiceASRTextTokenizerFast(Qwen2TokenizerFast):
     
     @property
     def eos_id(self) -> int:
-        """Id of the end of sequence token."""
+        """ID of the end of sequence token."""
         return self._eos_id
     
     @property
     def speech_start_id(self) -> int:
-        """Id of the speech start token."""
+        """ID of the speech start token."""
         return self._speech_start_id
     
     @property
     def speech_end_id(self) -> int:
-        """Id of the speech end token."""
+        """ID of the speech end token."""
         return self._speech_end_id
     
     @property
     def speech_pad_id(self) -> int:
-        """Id of the speech diffusion token."""
+        """ID of the speech diffusion token."""
         return self._speech_pad_id
     
+    @property
+    def text_chunk_end_id(self) -> int:
+        """ID of the text chunk end token (for streaming)."""
+        return self._text_chunk_end_id
+
     @property
     def pad_id(self) -> int:
         return self._pad_id

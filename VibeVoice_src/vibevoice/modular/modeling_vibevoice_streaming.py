@@ -182,7 +182,7 @@ class VibeVoiceStreamingModel(VibeVoiceStreamingPreTrainedModel):
         )
 
 
-AutoModel.register(VibeVoiceStreamingConfig, VibeVoiceStreamingModel)
+AutoModel.register(VibeVoiceStreamingConfig, VibeVoiceStreamingModel, exist_ok=True)
 
 __all__ = [
     "VibeVoiceStreamingPreTrainedModel",

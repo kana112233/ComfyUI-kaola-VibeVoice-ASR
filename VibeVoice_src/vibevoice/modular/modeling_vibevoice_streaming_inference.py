@@ -49,8 +49,9 @@ class MockCacheLayer:
     
     def get_mask_sizes(self, cache_position):
         """Return KV length and offset for mask creation."""
-        kv_length = self.key_cache.shape[2] if self.key_cache is not None else 0
-        return kv_length, 0
+        seq_length = self.key_cache.shape[2] if self.key_cache is not None else 0
+        query_length = cache_position.shape[0]
+        return seq_length + query_length, 0
     
     def update(self, key_states, value_states, cache_kwargs=None):
         """Update the cache with new key/value states."""
@@ -200,7 +201,7 @@ class VibeVoiceStreamingForConditionalGenerationInference(VibeVoiceStreamingPreT
     def acoustic_connector(self):
         return self.model.acoustic_connector
         
-    def tie_weights(self, **kwargs):
+    def tie_weights(self):
         """
         Tie the weights between the input embeddings and the output embeddings.
         """
@@ -511,6 +512,7 @@ class VibeVoiceStreamingForConditionalGenerationInference(VibeVoiceStreamingPreT
 
         generation_config, model_kwargs = self._prepare_generation_config(
             generation_config, 
+            True, 
             speech_start_id=tokenizer.speech_start_id, 
             speech_end_id=tokenizer.speech_end_id, 
             speech_diffusion_id=tokenizer.speech_diffusion_id, 
@@ -674,11 +676,11 @@ class VibeVoiceStreamingForConditionalGenerationInference(VibeVoiceStreamingPreT
         negative_outputs = all_prefilled_outputs["neg_lm"]
         tts_lm_negative_outputs = all_prefilled_outputs["neg_tts_lm"]
 
-        model_kwargs = self._update_model_kwargs_for_generation(
-            outputs, model_kwargs, num_new_tokens=first_text_window_size, is_encoder_decoder=False
+        model_kwargs = _update_model_kwargs_for_generation(
+            outputs, model_kwargs, num_new_tokens=first_text_window_size,
         )
-        tts_lm_model_kwargs = self._update_model_kwargs_for_generation(
-            tts_lm_outputs, tts_lm_model_kwargs, num_new_tokens=first_text_window_size, is_encoder_decoder=False
+        tts_lm_model_kwargs = _update_model_kwargs_for_generation(
+            tts_lm_outputs, tts_lm_model_kwargs, num_new_tokens=first_text_window_size,
         )
         negative_model_kwargs = self._update_model_kwargs_for_generation(
             negative_outputs, negative_model_kwargs, is_encoder_decoder=False,
@@ -897,7 +899,7 @@ class VibeVoiceStreamingForConditionalGenerationInference(VibeVoiceStreamingPreT
         return speech[: len(speech) // 2]
     
 
-AutoModelForCausalLM.register(VibeVoiceStreamingConfig, VibeVoiceStreamingForConditionalGenerationInference)
+AutoModelForCausalLM.register(VibeVoiceStreamingConfig, VibeVoiceStreamingForConditionalGenerationInference, exist_ok=True)
 
 __all__ = [
     "VibeVoiceStreamingForConditionalGenerationInference",
