@@ -9,7 +9,7 @@ from vibevoice.modular.modeling_vibevoice_asr import VibeVoiceASRForConditionalG
 from vibevoice.processor.vibevoice_asr_processor import VibeVoiceASRProcessor
 
 # Load the processor and model
-model_name = "microsoft/VibeVoice-ASR"
+model_name = "/home/yons/work/ai/ComfyUI/models/vibevoice/VibeVoice-ASR"
 processor = VibeVoiceASRProcessor.from_pretrained(model_name)
 model = VibeVoiceASRForConditionalGeneration.from_pretrained(
     model_name, 
