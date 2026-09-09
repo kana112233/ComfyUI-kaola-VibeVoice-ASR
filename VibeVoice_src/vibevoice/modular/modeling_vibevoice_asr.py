@@ -127,6 +127,16 @@ class VibeVoiceASRModel(VibeVoiceASRPreTrainedModel):
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         
         # Forward through language model
+        if hasattr(self, '_step_count'):
+            self._step_count += 1
+        else:
+            self._step_count = 1
+        print(f"--- Forward pass step {self._step_count} ---")
+        print(f"input_ids shape: {input_ids.shape if input_ids is not None else 'None'}")
+        print(f"inputs_embeds shape: {inputs_embeds.shape if inputs_embeds is not None else 'None'}")
+        print(f"attention_mask shape: {attention_mask.shape if attention_mask is not None else 'None'}")
+        print(f"past_key_values length: {len(past_key_values) if past_key_values is not None else 'None'}")
+        
         outputs = self.language_model(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -383,6 +393,16 @@ class VibeVoiceASRForConditionalGeneration(VibeVoiceASRPreTrainedModel, Generati
             inputs_embeds = inputs_embeds.clone()
             inputs_embeds[acoustic_input_mask] = speech_features
 
+        if hasattr(self, '_gen_step_count'):
+            self._gen_step_count += 1
+        else:
+            self._gen_step_count = 1
+        print(f"\n=== ConditionalGeneration step {self._gen_step_count} ===")
+        print(f"speech_tensors is None? {speech_tensors is None}")
+        print(f"acoustic_input_mask is None? {acoustic_input_mask is None}")
+        if inputs_embeds is not None:
+            print(f"Final inputs_embeds shape before model: {inputs_embeds.shape}")
+            
         # Forward through the model
         outputs = self.model(
             input_ids=None,
