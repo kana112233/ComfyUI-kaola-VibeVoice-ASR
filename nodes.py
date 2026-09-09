@@ -394,6 +394,7 @@ class VibeVoiceTranscribe:
             "repetition_penalty": repetition_penalty,
             "pad_token_id": processor.pad_id,
             "eos_token_id": processor.tokenizer.eos_token_id,
+            "use_cache": False,
         }
         # remove None values
         generation_config = {k: v for k, v in generation_config.items() if v is not None}
