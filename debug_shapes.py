@@ -34,35 +34,14 @@ print(f"inputs['speech_tensors'] shape: {inputs.get('speech_tensors').shape}")
 print(f"inputs['acoustic_input_mask'] shape: {inputs.get('acoustic_input_mask').shape}")
 print(f"inputs['speech_masks'] shape: {inputs.get('speech_masks').shape}")
 
-# Manually run the first pass of the model to trace where the shape mismatch happens!
-print("\nRunning model forward pass to intercept inputs_embeds...")
+print("\nRunning model.generate() to replicate crash...")
 try:
-    outputs = model(
-        input_ids=inputs.get('input_ids'),
-        speech_tensors=inputs.get('speech_tensors'),
-        speech_masks=inputs.get('speech_masks'),
-        acoustic_input_mask=inputs.get('acoustic_input_mask'),
-        output_hidden_states=False,
+    outputs = model.generate(
+        **inputs,
+        max_new_tokens=10
     )
-    print("Model forward pass succeeded!")
+    print("Model generation succeeded!")
 except Exception as e:
-    print(f"Error during model forward: {type(e).__name__}: {str(e)}")
-    
-    # Let's inspect the shapes of the tensors directly
-    print("\nTracing manual embedding preparation...")
-    inputs_embeds = model.get_input_embeddings()(inputs['input_ids'])
-    print(f"Initial inputs_embeds shape: {inputs_embeds.shape}")
-    
-    speech_features = model.encode_speech(
-        speech_tensors=inputs['speech_tensors'],
-        speech_masks=inputs.get('speech_masks'),
-        speech_semantic_tensors=None,
-    )
-    print(f"speech_features shape: {speech_features.shape}")
-    
-    try:
-        inputs_embeds = inputs_embeds.clone()
-        inputs_embeds[inputs['acoustic_input_mask']] = speech_features
-        print(f"inputs_embeds shape after assignment: {inputs_embeds.shape}")
-    except Exception as assign_e:
-        print(f"Failed to assign speech_features to inputs_embeds: {assign_e}")
+    print(f"Error during model generation: {type(e).__name__}: {str(e)}")
+    import traceback
+    traceback.print_exc()
