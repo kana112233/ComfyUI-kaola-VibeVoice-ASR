@@ -1,6 +1,10 @@
 import torch
 import numpy as np
 from transformers import AutoProcessor
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), "VibeVoice_src"))
+
 from vibevoice.modular.modeling_vibevoice_asr import VibeVoiceASRForConditionalGeneration
 from vibevoice.processor.vibevoice_asr_processor import VibeVoiceASRProcessor
 
