@@ -404,6 +404,11 @@ class VibeVoiceASRProcessor:
             tokenize=True
         )
         
+        if hasattr(user_tokens, "input_ids"):
+            user_tokens = user_tokens.input_ids
+        elif isinstance(user_tokens, dict) and "input_ids" in user_tokens:
+            user_tokens = user_tokens["input_ids"]
+            
         # Combine tokens
         full_tokens = system_tokens + user_tokens
         
