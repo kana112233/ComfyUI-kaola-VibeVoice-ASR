@@ -38,7 +38,8 @@ print("\nRunning model.generate() to replicate crash...")
 try:
     outputs = model.generate(
         **inputs,
-        max_new_tokens=10
+        max_new_tokens=10,
+        use_cache=False
     )
     print("Model generation succeeded!")
 except Exception as e:

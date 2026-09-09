@@ -787,6 +787,13 @@ class VibeVoiceASRForConditionalGeneration(VibeVoiceASRPreTrainedModel, Generati
         # Following Qwen2-VL pattern: only include speech inputs on the first forward pass
         # (when cache_position[0] == 0), exclude them in subsequent generation steps
         if cache_position is not None and len(cache_position) > 0 and cache_position[0] == 0:
+            
+            # If use_cache=False, input_ids grows each step, so we must pad acoustic_input_mask
+            if not use_cache and acoustic_input_mask is not None and input_ids is not None:
+                if acoustic_input_mask.shape[1] < input_ids.shape[1]:
+                    padding_len = input_ids.shape[1] - acoustic_input_mask.shape[1]
+                    acoustic_input_mask = torch.nn.functional.pad(acoustic_input_mask, (0, padding_len), value=False)
+                    
             # First forward pass - include speech inputs if provided
             model_inputs.update({
                 "speech_tensors": speech_tensors,
